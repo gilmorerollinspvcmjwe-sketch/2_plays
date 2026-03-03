@@ -1,0 +1,26 @@
+{
+  "default": {
+    "ssrRate": 0.03,
+    "srRate": 0.10,
+    "rRate": 0.87,
+    "pityThreshold": 90,
+    "softPityStart": 75,
+    "description": "默认抽卡配置"
+  },
+  "upEvent": {
+    "ssrRate": 0.06,
+    "srRate": 0.15,
+    "rRate": 0.79,
+    "pityThreshold": 80,
+    "softPityStart": 70,
+    "description": "UP 活动期间配置"
+  },
+  "newbie": {
+    "ssrRate": 0.10,
+    "srRate": 0.20,
+    "rRate": 0.70,
+    "pityThreshold": 60,
+    "softPityStart": 50,
+    "description": "新手福利池配置"
+  }
+}

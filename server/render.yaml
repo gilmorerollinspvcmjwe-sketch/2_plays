@@ -1,0 +1,41 @@
+# Render 部署配置
+# 文档：https://render.com/docs/blueprint-spec
+
+services:
+  # Web 服务
+  - type: web
+    name: game-platform-server
+    env: node
+    region: oregon
+    plan: free
+    
+    # 构建配置
+    buildCommand: npm install && npm run build
+    
+    # 启动命令
+    startCommand: npm run start
+    
+    # 环境变量
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      # JWT_SECRET 应该在 Render 面板中作为 Secret 添加
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        value: https://your-frontend-domain.com
+    
+    # 健康检查
+    healthCheckPath: /health
+    healthCheckTimeout: 30
+    
+    # 自动部署
+    autoDeploy: true
+    
+    # 实例数量
+    numInstances: 1
+    
+    # Docker 配置（可选，如果使用 Docker 部署）
+    # dockerfilePath: ./Dockerfile

@@ -1,0 +1,29 @@
+# Railway 部署配置
+# 文档：https://docs.railway.app/deploy
+
+# 服务名称
+name: game-platform-server
+
+# 构建配置
+[build]
+# 构建命令
+builder = "nixpacks"
+
+# 或者使用自定义构建命令
+# buildCommand = "npm install && npm run build"
+
+# 启动命令
+startCommand = "npm run start"
+
+# 环境变量（在 Railway 面板中配置更安全）
+# PORT 会自动设置
+# NODE_ENV=production
+
+# 健康检查
+[healthcheck]
+path = "/health"
+timeout = 3000
+
+# 服务端口
+[service]
+port = 3000

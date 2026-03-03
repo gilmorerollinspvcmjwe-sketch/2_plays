@@ -1,0 +1,44 @@
+{
+  "conservative": {
+    "name": "保守型",
+    "description": "稳扎稳打，注重长期发展",
+    "gold": {
+      "operation": 0.4,
+      "development": 0.4,
+      "reserve": 0.2
+    },
+    "devPoints": {
+      "character": 0.4,
+      "plot": 0.4,
+      "event": 0.2
+    }
+  },
+  "aggressive": {
+    "name": "进攻型",
+    "description": "激进投入，追求短期爆发",
+    "gold": {
+      "operation": 0.6,
+      "development": 0.3,
+      "reserve": 0.1
+    },
+    "devPoints": {
+      "character": 0.3,
+      "plot": 0.3,
+      "event": 0.4
+    }
+  },
+  "balanced": {
+    "name": "平衡型",
+    "description": "均衡发展，兼顾各方面",
+    "gold": {
+      "operation": 0.5,
+      "development": 0.3,
+      "reserve": 0.2
+    },
+    "devPoints": {
+      "character": 0.4,
+      "plot": 0.3,
+      "event": 0.3
+    }
+  }
+}
