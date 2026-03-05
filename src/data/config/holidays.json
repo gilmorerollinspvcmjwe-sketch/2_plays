@@ -1,0 +1,243 @@
+{
+  "version": "1.0.0",
+  "description": "节假日配置 - 包含固定日期节假日和特殊事件",
+  "fixedHolidays": [
+    {
+      "id": "new_year",
+      "name": "元旦",
+      "startDate": "01-01",
+      "endDate": "01-01",
+      "description": "新年新气象，全年新的开始",
+      "effects": {
+        "revenueMultiplier": 1.15,
+        "activityMultiplier": 1.20
+      },
+      "specialEffect": "收入 +15%、活跃 +20%"
+    },
+    {
+      "id": "valentines_day",
+      "name": "情人节",
+      "startDate": "02-14",
+      "endDate": "02-14",
+      "description": "浪漫情人节，情侣向项目热度上升",
+      "effects": {
+        "revenueMultiplier": 1.20,
+        "activityMultiplier": 1.25
+      },
+      "specialEffect": "情侣向项目热度 +25%",
+      "targetGenres": ["sweet", "modern"]
+    },
+    {
+      "id": "qingming",
+      "name": "清明节",
+      "startDate": "04-04",
+      "endDate": "04-06",
+      "description": "清明时节，缅怀先人",
+      "effects": {
+        "revenueMultiplier": 1.05
+      }
+    },
+    {
+      "id": "labor_day",
+      "name": "劳动节",
+      "startDate": "05-01",
+      "endDate": "05-05",
+      "description": "劳动节快乐，小长假期间",
+      "effects": {
+        "revenueMultiplier": 1.15,
+        "activityMultiplier": 1.20
+      },
+      "specialEffect": "收入 +15%、活跃 +20%"
+    },
+    {
+      "id": "dragon_boat",
+      "name": "端午节",
+      "startDate": "05-28",
+      "endDate": "05-30",
+      "description": "端午安康，传统节日",
+      "effects": {
+        "revenueMultiplier": 1.10,
+        "activityMultiplier": 1.15
+      }
+    },
+    {
+      "id": "mid_autumn",
+      "name": "中秋节",
+      "startDate": "09-15",
+      "endDate": "09-17",
+      "description": "中秋团圆，阖家欢乐",
+      "effects": {
+        "revenueMultiplier": 1.15,
+        "activityMultiplier": 1.20
+      },
+      "specialEffect": "收入 +15%、活跃 +20%"
+    },
+    {
+      "id": "national_day",
+      "name": "国庆节",
+      "startDate": "10-01",
+      "endDate": "10-07",
+      "description": "国庆黄金周，全年最长假期之一",
+      "effects": {
+        "revenueMultiplier": 1.25,
+        "activityMultiplier": 1.30
+      },
+      "specialEffect": "收入 +25%、活跃 +30%"
+    },
+    {
+      "id": "christmas",
+      "name": "圣诞节",
+      "startDate": "12-24",
+      "endDate": "12-25",
+      "description": "圣诞快乐，西方传统节日",
+      "effects": {
+        "revenueMultiplier": 1.20,
+        "activityMultiplier": 1.25
+      },
+      "specialEffect": "收入 +20%、活跃 +25%"
+    }
+  ],
+  "lunarHolidays": [
+    {
+      "id": "spring_festival",
+      "name": "春节",
+      "description": "新春佳节，全年最盛大的传统节日",
+      "lunarDate": "01-01",
+      "duration": 7,
+      "effects": {
+        "revenueMultiplier": 1.30,
+        "activityMultiplier": 1.40,
+        "studentActivityMultiplier": 1.50
+      },
+      "specialEffect": "收入 +30%、活跃 +40%、学生活跃 +50%",
+      "note": "农历正月初一至初七，具体日期需根据农历计算"
+    },
+    {
+      "id": "lantern_festival",
+      "name": "元宵节",
+      "description": "元宵佳节，春节后的第一个传统节日",
+      "lunarDate": "01-15",
+      "duration": 1,
+      "effects": {
+        "revenueMultiplier": 1.10,
+        "activityMultiplier": 1.15
+      }
+    },
+    {
+      "id": "double_seventh",
+      "name": "七夕节",
+      "description": "中国情人节，牛郎织女相会之日",
+      "lunarDate": "07-07",
+      "duration": 1,
+      "effects": {
+        "revenueMultiplier": 1.20,
+        "activityMultiplier": 1.25
+      },
+      "specialEffect": "情侣向项目热度 +25%",
+      "targetGenres": ["sweet", "fantasy"]
+    },
+    {
+      "id": "double_ninth",
+      "name": "重阳节",
+      "description": "重阳登高，敬老爱老",
+      "lunarDate": "09-09",
+      "duration": 1,
+      "effects": {
+        "revenueMultiplier": 1.05
+      }
+    }
+  ],
+  "seasonalEvents": [
+    {
+      "id": "winter_vacation",
+      "name": "寒假",
+      "description": "学生寒假期间，学生向项目活跃度和收入大幅提升",
+      "startDate": "01-15",
+      "endDate": "02-28",
+      "effects": {
+        "studentActivityMultiplier": 1.50,
+        "revenueMultiplier": 1.40
+      },
+      "specialEffect": "学生向项目活跃 +50%、收入 +40%",
+      "targetAudience": "student"
+    },
+    {
+      "id": "summer_vacation",
+      "name": "暑假",
+      "description": "学生暑假期间，学生向项目活跃度和收入大幅提升",
+      "startDate": "07-01",
+      "endDate": "08-31",
+      "effects": {
+        "studentActivityMultiplier": 1.50,
+        "revenueMultiplier": 1.40
+      },
+      "specialEffect": "学生向项目活跃 +50%、收入 +40%",
+      "targetAudience": "student"
+    }
+  ],
+  "specialEvents": [
+    {
+      "id": "weekend",
+      "name": "周末",
+      "description": "每周六、周日，休闲时间增加",
+      "recurrence": "weekly",
+      "weekDays": [0, 6],
+      "effects": {
+        "revenueMultiplier": 1.20,
+        "activityMultiplier": 1.30
+      },
+      "specialEffect": "活跃度 +30%、收入 +20%"
+    },
+    {
+      "id": "anniversary",
+      "name": "项目周年庆",
+      "description": "项目上线周年纪念，根据周年数提供不同加成",
+      "type": "dynamic",
+      "baseEffects": {
+        "revenueMultiplier": 1.20,
+        "activityMultiplier": 1.25
+      },
+      "yearBonus": 0.05,
+      "duration": 3,
+      "specialEffect": "每周年收入 +5%、活跃 +5%"
+    }
+  ],
+  "seasonBuffs": {
+    "spring": {
+      "name": "春季",
+      "months": [3, 4, 5],
+      "description": "春暖花开，收入增加",
+      "effects": {
+        "revenueMultiplier": 1.05
+      },
+      "specialEffect": "收入 +5%"
+    },
+    "summer": {
+      "name": "夏季",
+      "months": [6, 7, 8],
+      "description": "夏日炎炎，学生活跃",
+      "effects": {
+        "studentActivityMultiplier": 1.20
+      },
+      "specialEffect": "学生活跃 +20%"
+    },
+    "autumn": {
+      "name": "秋季",
+      "months": [9, 10, 11],
+      "description": "秋高气爽，收入增加",
+      "effects": {
+        "revenueMultiplier": 1.05
+      },
+      "specialEffect": "收入 +5%"
+    },
+    "winter": {
+      "name": "冬季",
+      "months": [12, 1, 2],
+      "description": "冬日暖阳，付费率提升",
+      "effects": {
+        "paymentRateMultiplier": 1.10
+      },
+      "specialEffect": "付费率 +10%"
+    }
+  }
+}

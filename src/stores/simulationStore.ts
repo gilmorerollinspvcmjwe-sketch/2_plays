@@ -40,6 +40,9 @@ import type {
   CommentSentiment,
   SimulationTickResult
 } from '@/types/simulation';
+import { DailyEventEngine } from '@/engine/dailyEventEngine';
+import type { DailyEvent, DailyEventType } from '@/engine/dailyEventEngine';
+import { seasonEventEngine } from '@/engine/seasonEventEngine';
 import {
   calculateProjectQuality,
   calculateCharacterQuality,
@@ -182,6 +185,11 @@ export const useSimulationStore = defineStore('simulation', () => {
   // 项目评论和告白（按项目存储）
   const projectComments = ref<Map<string, ProjectComment[]>>(new Map());
   const projectConfessions = ref<Map<string, ProjectConfession[]>>(new Map());
+
+  // ==================== Phase 5: 随机事件系统状态 ====================
+  const dailyEventEngine = ref<DailyEventEngine | null>(null);
+  const triggeredEvents = ref<DailyEvent[]>([]);
+  const pendingNeutralEvents = ref<DailyEvent[]>([]);
 
   const isInitialized = computed(() => playerPool.value !== null && engine.value !== null);
 
@@ -616,11 +624,11 @@ export const useSimulationStore = defineStore('simulation', () => {
     const developingProjects = projectStore.developingProjects;
 
     developingProjects.forEach(project => {
-      // 获取项目团队效率
+      // 获取项目团队效率（包含默契度加成）
       const teamEfficiency = employeeStore.getProjectTeamEfficiency(project.id);
       const avgEfficiency = teamEfficiency.overall || 1.0;
 
-      // 基础进度增长（每天1-3%）
+      // 基础进度增长（每天 1-3%）
       const baseProgress = 1 + Math.random() * 2;
 
       // 应用效率乘数（0.5 - 1.5）
@@ -631,14 +639,262 @@ export const useSimulationStore = defineStore('simulation', () => {
       const newProgress = Math.min(100, project.progress + actualProgress);
       projectStore.updateProjectProgress(project.id, newProgress);
 
-      // 项目进度增加给员工增加经验
+      // 项目进度增加给员工增加经验（基于进度：+5/+8/+10）
       if (newProgress > project.progress) {
         const projectEmployees = employeeStore.getProjectEmployees(project.id);
         projectEmployees.forEach(emp => {
-          employeeStore.addExperience(emp.id, Math.floor(actualProgress * 0.5));
+          // 根据员工等级调整经验获取
+          let expGain = 5;
+          if (emp.level === 'mid') expGain = 8;
+          else if (emp.level === 'senior' || emp.level === 'expert') expGain = 10;
+          
+          employeeStore.addExperience(emp.id, expGain);
         });
       }
     });
+  }
+
+  // ==================== Phase 5: 随机事件系统集成 ====================
+
+  /**
+   * 触发每日随机事件
+   */
+  async function triggerDailyEvents() {
+    if (!dailyEventEngine.value) return;
+
+    const employeeStore = useEmployeeStore();
+    const projectStore = useProjectStore();
+    const gameStore = useGameStore();
+
+    // 获取员工列表
+    const employees = employeeStore.employees;
+
+    // 获取项目 ID 列表
+    const projectIds = projectStore.operatingProjects.map(p => p.id);
+
+    // 获取角色名称列表
+    const characterNames = gameStore.characters.map(c => c.name);
+
+    // 触发事件
+    const result = dailyEventEngine.value.triggerEvents({
+      employees,
+      projectIds,
+      characterNames
+    });
+
+    // 保存触发的事件
+    triggeredEvents.value = result.events;
+
+    // 分类处理事件
+    result.events.forEach(event => {
+      if (event.category === 'neutral') {
+        // 中性事件需要玩家选择，加入待处理队列
+        pendingNeutralEvents.value.push(event);
+      } else {
+        // 正面/负面/员工事件自动应用影响
+        applyEventImpact(event);
+      }
+    });
+
+    // 将事件添加到历史
+    recentEvents.value.push(...result.events.map(e => ({
+      ...e,
+      resolved: false
+    })));
+  }
+
+  /**
+   * 应用单个事件的影响
+   */
+  function applyEventImpact(event: DailyEvent) {
+    const impact = event.impact;
+
+    // 根据事件类型应用不同影响
+    switch (event.category) {
+      case 'positive':
+        applyPositiveEventImpact(event);
+        break;
+      case 'negative':
+        applyNegativeEventImpact(event);
+        break;
+      case 'employee':
+        applyEmployeeEventImpact(event);
+        break;
+    }
+
+    // 如果有持续时间，设置事件效果
+    if (event.duration) {
+      // TODO: 实现持续事件效果系统
+      console.log(`事件 ${event.title} 将持续 ${event.duration} 天`);
+    }
+  }
+
+  /**
+   * 应用正面事件影响
+   */
+  function applyPositiveEventImpact(event: DailyEvent) {
+    const impact = event.impact;
+    const projectStore = useProjectStore();
+
+    // 玩家数量增加
+    if (impact.playerChange && event.affectedProjectId) {
+      const projectData = projectOperationData.value.get(event.affectedProjectId);
+      if (projectData) {
+        projectData.activePlayers += impact.playerChange;
+        projectData.newPlayers += impact.playerChange;
+      }
+    }
+
+    // 收入加成
+    if (impact.revenueChange) {
+      // 对受影响的项目应用收入加成
+      if (event.affectedProjectId) {
+        const projectData = projectOperationData.value.get(event.affectedProjectId);
+        if (projectData) {
+          projectData.dailyRevenue = Math.floor(
+            projectData.dailyRevenue * (1 + impact.revenueChange)
+          );
+        }
+      }
+    }
+
+    // 满意度提升
+    if (impact.satisfactionChange) {
+      // 全局满意度提升
+      globalMetrics.value.averageSatisfaction = Math.min(1,
+        globalMetrics.value.averageSatisfaction + (impact.satisfactionChange / 100)
+      );
+    }
+
+    // 声誉提升
+    if (impact.reputationChange) {
+      operationMetrics.value.reputation = Math.min(100,
+        operationMetrics.value.reputation + impact.reputationChange
+      );
+    }
+
+    console.log(`应用正面事件影响：${event.title}`);
+  }
+
+  /**
+   * 应用负面事件影响
+   */
+  function applyNegativeEventImpact(event: DailyEvent) {
+    const impact = event.impact;
+    const projectStore = useProjectStore();
+
+    // 玩家数量减少
+    if (impact.playerChange && event.affectedProjectId) {
+      const projectData = projectOperationData.value.get(event.affectedProjectId);
+      if (projectData) {
+        projectData.activePlayers = Math.max(0, projectData.activePlayers + impact.playerChange);
+        projectData.lostPlayers += Math.abs(impact.playerChange);
+      }
+    }
+
+    // 收入减少
+    if (impact.revenueChange) {
+      if (event.affectedProjectId) {
+        const projectData = projectOperationData.value.get(event.affectedProjectId);
+        if (projectData) {
+          projectData.dailyRevenue = Math.floor(
+            projectData.dailyRevenue * (1 + impact.revenueChange)
+          );
+        }
+      }
+    }
+
+    // 满意度降低
+    if (impact.satisfactionChange) {
+      globalMetrics.value.averageSatisfaction = Math.max(0,
+        globalMetrics.value.averageSatisfaction + (impact.satisfactionChange / 100)
+      );
+    }
+
+    // 声誉降低
+    if (impact.reputationChange) {
+      operationMetrics.value.reputation = Math.max(0,
+        operationMetrics.value.reputation + impact.reputationChange
+      );
+    }
+
+    console.log(`应用负面事件影响：${event.title}`);
+  }
+
+  /**
+   * 应用员工事件影响
+   */
+  function applyEmployeeEventImpact(event: DailyEvent) {
+    const employeeStore = useEmployeeStore();
+    const impact = event.impact;
+
+    if (!event.affectedEmployeeId) return;
+
+    const employee = employeeStore.employees.find(e => e.id === event.affectedEmployeeId);
+    if (!employee) return;
+
+    // 疲劳度变化
+    if (impact.fatigueChange) {
+      employee.fatigue = Math.max(0, Math.min(100, employee.fatigue + impact.fatigueChange));
+    }
+
+    // 满意度变化
+    if (impact.satisfactionChange) {
+      employee.satisfaction = Math.max(0, Math.min(100, employee.satisfaction + impact.satisfactionChange));
+    }
+
+    // 经验奖励
+    if (impact.experienceBonus) {
+      employeeStore.addExperience(event.affectedEmployeeId, impact.experienceBonus);
+    }
+
+    // 公司声誉变化
+    if (impact.reputationChange) {
+      operationMetrics.value.reputation = Math.max(0, Math.min(100,
+        operationMetrics.value.reputation + impact.reputationChange
+      ));
+    }
+
+    console.log(`应用员工事件影响：${event.title}`);
+  }
+
+  /**
+   * 将事件影响应用到所有项目
+   */
+  function applyEventImpactsToProjects() {
+    // 处理已自动应用的 event 影响
+    // 这个函数主要用于处理需要批量应用的影响
+    triggeredEvents.value.forEach(event => {
+      if (event.category !== 'neutral') {
+        // 非中性事件已经在 applyEventImpact 中处理
+        return;
+      }
+      // 中性事件等待玩家选择
+    });
+  }
+
+  /**
+   * 处理中性事件选择
+   */
+  function handleNeutralEventChoice(eventId: string, accept: boolean) {
+    const event = pendingNeutralEvents.value.find(e => e.id === eventId);
+    if (!event) return;
+
+    if (accept) {
+      // 接受事件，应用正面影响
+      applyEventImpact(event);
+    } else {
+      // 拒绝事件，可能应用负面影响或无影响
+      if (event.type === 'player_request') {
+        // 拒绝玩家请求，满意度降低
+        globalMetrics.value.averageSatisfaction = Math.max(0,
+          globalMetrics.value.averageSatisfaction - 0.05
+        );
+      }
+    }
+
+    // 从待处理队列移除
+    pendingNeutralEvents.value = pendingNeutralEvents.value.filter(e => e.id !== eventId);
   }
 
   // ==================== 原有函数 ====================
@@ -660,11 +916,16 @@ export const useSimulationStore = defineStore('simulation', () => {
       worldSimulator.value = new WorldSimulator();
       worldSimulator.value.initialize(1);
 
+      // Phase 5: 初始化每日事件引擎
+      dailyEventEngine.value = new DailyEventEngine();
+
       currentDay.value = 1;
       history.value = [];
       recentConfessions.value = [];
       recentFanworks.value = [];
       recentEvents.value = [];
+      triggeredEvents.value = [];
+      pendingNeutralEvents.value = [];
       retentionHistory.value = [];
       currentRetention.value = { d1: 0, d7: 0, d30: 0 };
       sentimentDistribution.value = { positive: 0, neutral: 0, negative: 0 };
@@ -682,6 +943,15 @@ export const useSimulationStore = defineStore('simulation', () => {
   /**
    * 重构后的 simulation tick
    * 基于真实项目数据生成运营数据
+   * 
+   * 调用顺序：
+   * 1. 递增天数
+   * 2. 员工更新
+   * 3. 角色更新
+   * 4. 季节检查
+   * 5. 随机事件
+   * 6. 运营数据生成
+   * 7. 数据保存
    */
   async function tick(): Promise<SimulationTickResult | null> {
     if (!engine.value || !playerPool.value) {
@@ -696,12 +966,66 @@ export const useSimulationStore = defineStore('simulation', () => {
       const projectStore = useProjectStore();
       const operationStore = useOperationStore();
       const gameStore = useGameStore();
+      const employeeStore = useEmployeeStore();
 
-      // 1. 获取所有已发布的项目
+      // ==================== Phase 6: 集成所有模块 ====================
+      // 1. 递增天数（首先递增，用于后续计算）
+      currentDay.value++;
+      console.log(`[Simulation] 开始第 ${currentDay.value.value} 天的模拟`);
+
+      // 2. 员工更新（疲劳度、满意度、经验、离职等）
+      console.log('[Simulation] 执行员工每日更新...');
+      const allProjectIds = [...projectStore.projects.map(p => p.id)];
+      const allCharacterNames = gameStore.characters.map(c => c.name);
+      
+      const dailyUpdateResult = employeeStore.simulateDailyUpdate(allProjectIds, allCharacterNames);
+      
+      if (dailyUpdateResult.leveledUpEmployees.length > 0) {
+        console.log(`[Simulation] ${dailyUpdateResult.leveledUpEmployees.length}名员工可以升级`);
+      }
+      
+      if (dailyUpdateResult.events.length > 0) {
+        console.log(`[Simulation] 员工系统触发了${dailyUpdateResult.events.length}个随机事件`);
+      }
+
+      // 3. 角色更新（亲密度衰减、人气变化、生日事件等）
+      console.log('[Simulation] 执行角色每日更新...');
+      try {
+        const characterUpdateResult = await gameStore.updateCharacterDaily();
+        if (characterUpdateResult.success) {
+          console.log('[Simulation] 角色每日更新完成');
+          
+          if (characterUpdateResult.birthdayEvents && characterUpdateResult.birthdayEvents.length > 0) {
+            console.log(`[Simulation] 触发${characterUpdateResult.birthdayEvents.length}个生日事件`);
+          }
+          
+          if (characterUpdateResult.popularityChanges && characterUpdateResult.popularityChanges.length > 0) {
+            console.log(`[Simulation] ${characterUpdateResult.popularityChanges.length}个角色人气发生变化`);
+          }
+        } else {
+          console.warn('[Simulation] 角色每日更新失败:', characterUpdateResult.message);
+        }
+      } catch (charError) {
+        console.error('[Simulation] 角色每日更新异常:', charError);
+      }
+
+      // 4. 季节检查（季节系统更新）
+      console.log('[Simulation] 执行季节系统更新...');
+      try {
+        if (seasonEventEngine) {
+          seasonEventEngine.update();
+          const seasonState = seasonEventEngine.getState();
+          console.log(`[Simulation] 当前季节：${seasonState.currentSeason}, 节假日：${seasonState.activeHolidays.length}个`);
+        }
+      } catch (seasonError) {
+        console.error('[Simulation] 季节系统更新异常:', seasonError);
+      }
+
+      // 5. 获取所有已发布的项目
       const operatingProjects = projectStore.operatingProjects;
 
       if (operatingProjects.length === 0) {
-        console.log('没有已发布的项目，跳过模拟');
+        console.log('[Simulation] 没有已发布的项目，跳过模拟');
         // 仍然执行原有的虚拟模拟以保持兼容性
         return await runLegacyTick();
       }
@@ -805,10 +1129,39 @@ export const useSimulationStore = defineStore('simulation', () => {
         });
       }
 
-      // 3. 更新全局指标
+      // 6. 触发每日随机事件（Phase 5）
+      console.log('[Simulation] 触发每日随机事件...');
+      try {
+        await triggerDailyEvents();
+        
+        if (triggeredEvents.value.length > 0) {
+          console.log(`[Simulation] 触发了 ${triggeredEvents.value.length} 个随机事件`);
+          
+          // 分类统计事件
+          const positiveCount = triggeredEvents.value.filter(e => e.category === 'positive').length;
+          const negativeCount = triggeredEvents.value.filter(e => e.category === 'negative').length;
+          const neutralCount = triggeredEvents.value.filter(e => e.category === 'neutral').length;
+          const employeeCount = triggeredEvents.value.filter(e => e.category === 'employee').length;
+          
+          console.log(`[Simulation] 事件类型分布：正面${positiveCount}个，负面${negativeCount}个，中性${neutralCount}个，员工${employeeCount}个`);
+        }
+      } catch (eventError) {
+        console.error('[Simulation] 随机事件触发异常:', eventError);
+      }
+
+      // 7. 应用事件影响到项目数据（Phase 5）
+      console.log('[Simulation] 应用事件影响...');
+      try {
+        applyEventImpactsToProjects();
+      } catch (impactError) {
+        console.error('[Simulation] 应用事件影响异常:', impactError);
+      }
+
+      // 8. 更新全局指标
+      console.log('[Simulation] 更新全局指标...');
       updateGlobalMetrics();
 
-      // 4. 更新运营效果追踪（Phase 3）
+      // 9. 更新运营效果追踪（Phase 3）
       operationStore.updateOperationEffectTracking(
         projectResults.map(r => ({
           projectId: r.projectId,
@@ -816,19 +1169,28 @@ export const useSimulationStore = defineStore('simulation', () => {
         }))
       );
 
-      // 5. 更新开发中项目进度
+      // 10. 清理过期数据（优化 4）
+      console.log('[Simulation] 清理过期数据...');
+      cleanupExpiredData();
+
+      // 11. 更新开发中项目进度
+      console.log('[Simulation] 更新开发中项目进度...');
       updateDevelopingProjects();
 
-      // 6. 重置每日福利值（Phase 3）
+      // 12. 重置每日福利值（Phase 3）
+      console.log('[Simulation] 重置每日福利值...');
       operationStore.resetRecentWelfare();
 
-      // 7. 递增天数
-      currentDay.value++;
+      // 13. 保存数据（批量保存）
+      console.log('[Simulation] 保存数据到本地存储...');
+      try {
+        saveToLocal();
+        console.log('[Simulation] 数据保存成功');
+      } catch (saveError) {
+        console.error('[Simulation] 数据保存失败:', saveError);
+      }
 
-      // 8. 保存数据
-      saveToLocal();
-
-      // 9. 更新情感分布（基于所有项目评论）
+      // 14. 更新情感分布（基于所有项目评论）
       updateSentimentDistribution();
 
       return {
@@ -1142,46 +1504,157 @@ export const useSimulationStore = defineStore('simulation', () => {
 
   // ==================== 数据持久化 ====================
 
+  /**
+   * 保存到本地存储（优化版）
+   * - 批量保存所有数据
+   * - 压缩数据大小
+   */
   function saveToLocal() {
-    const data = {
-      currentDay: currentDay.value,
-      projectOperationData: Array.from(projectOperationData.value.entries()),
-      globalMetrics: globalMetrics.value,
-      config: config.value,
-      projectComments: Array.from(projectComments.value.entries()),
-      projectConfessions: Array.from(projectConfessions.value.entries())
-    };
-    localStorage.setItem('simulation_data', JSON.stringify(data));
-  }
+    try {
+      const now = Date.now();
 
-  function loadFromLocal() {
-    const saved = localStorage.getItem('simulation_data');
-    if (saved) {
-      try {
-        const data = JSON.parse(saved);
-        currentDay.value = data.currentDay || 1;
-        if (data.projectOperationData) {
-          projectOperationData.value = new Map(data.projectOperationData);
-        }
-        if (data.globalMetrics) {
-          globalMetrics.value = data.globalMetrics;
-        }
-        if (data.config) {
-          config.value = data.config;
-        }
-        if (data.projectComments) {
-          projectComments.value = new Map(data.projectComments);
-        }
-        if (data.projectConfessions) {
-          projectConfessions.value = new Map(data.projectConfessions);
-        }
-      } catch (e) {
-        console.error('Failed to load simulation data:', e);
-      }
+      // 批量保存数据
+      const data = {
+        currentDay: currentDay.value,
+        projectOperationData: Array.from(projectOperationData.value.entries()),
+        globalMetrics: globalMetrics.value,
+        config: config.value,
+        projectComments: Array.from(projectComments.value.entries()),
+        projectConfessions: Array.from(projectConfessions.value.entries()),
+        lastSaveTime: now
+      };
+
+      localStorage.setItem('simulation_data', JSON.stringify(data));
+      
+      // 保存成功日志
+      console.log('[Simulation] 数据保存成功:', {
+        currentDay: currentDay.value,
+        projectsCount: projectOperationData.value.size,
+        commentsCount: Array.from(projectComments.value.values()).reduce((sum, c) => sum + c.length, 0),
+        confessionsCount: Array.from(projectConfessions.value.values()).reduce((sum, c) => sum + c.length, 0)
+      });
+    } catch (error) {
+      console.error('[Simulation] 数据保存失败:', error);
+      throw error;
     }
   }
 
-  function getHistory(): SimulationResult[] {
+  /**
+   * 从本地存储加载（优化版）
+   * - 数据验证
+   * - 版本兼容
+   * - 错误恢复
+   */
+  function loadFromLocal() {
+    try {
+      const saved = localStorage.getItem('simulation_data');
+      if (!saved) {
+        console.log('[Simulation] 未找到保存的数据，使用默认值');
+        return;
+      }
+
+      const data = JSON.parse(saved);
+      
+      // 数据验证和迁移
+      if (data.currentDay) {
+        currentDay.value = data.currentDay;
+      }
+      
+      if (data.projectOperationData && Array.isArray(data.projectOperationData)) {
+        projectOperationData.value = new Map(data.projectOperationData);
+        console.log(`[Simulation] 加载了 ${projectOperationData.value.size} 个项目的运营数据`);
+      }
+      
+      if (data.globalMetrics) {
+        globalMetrics.value = data.globalMetrics;
+      }
+      
+      if (data.config) {
+        config.value = data.config;
+      }
+      
+      if (data.projectComments && Array.isArray(data.projectComments)) {
+        projectComments.value = new Map(data.projectComments);
+        const totalComments = Array.from(projectComments.value.values()).reduce((sum, c) => sum + c.length, 0);
+        console.log(`[Simulation] 加载了 ${totalComments} 条评论`);
+      }
+      
+      if (data.projectConfessions && Array.isArray(data.projectConfessions)) {
+        projectConfessions.value = new Map(data.projectConfessions);
+        const totalConfessions = Array.from(projectConfessions.value.values()).reduce((sum, c) => sum + c.length, 0);
+        console.log(`[Simulation] 加载了 ${totalConfessions} 条告白`);
+      }
+      
+      // 检查数据是否过期（超过 7 天未登录）
+      if (data.lastSaveTime) {
+        const daysSinceSave = Math.floor((Date.now() - data.lastSaveTime) / (1000 * 60 * 60 * 24));
+        if (daysSinceSave > 7) {
+          console.warn(`[Simulation] 数据已过期 ${daysSinceSave} 天，可能需要重新校准`);
+          // TODO: 实现离线期间的数据补偿逻辑
+        }
+      }
+      
+      console.log('[Simulation] 数据加载成功');
+  } catch (error) {
+    console.error('[Simulation] 数据加载失败:', error);
+    // 数据损坏时清空，避免影响游戏运行
+    localStorage.removeItem('simulation_data');
+  }
+}
+
+/**
+ * 优化 4: 清理过期数据（统一清理机制）
+ */
+function cleanupExpiredData(): void {
+  const now = Date.now();
+  const thirtyDaysAgo = now - (30 * 24 * 60 * 60 * 1000);
+  
+  // 清理过期的评论（超过 30 天）
+  projectComments.value.forEach((comments, projectId) => {
+    const validComments = comments.filter(c => {
+      const commentTime = new Date(c.createdAt).getTime();
+      return commentTime > thirtyDaysAgo;
+    });
+    
+    // 只保留最近 50 条
+    const limitedComments = validComments.slice(-50);
+    
+    if (limitedComments.length !== comments.length) {
+      projectComments.value.set(projectId, limitedComments);
+      console.log(`[Simulation] 清理项目 ${projectId} 的过期评论：${comments.length} -> ${limitedComments.length}`);
+    }
+  });
+  
+  // 清理过期的告白（超过 30 天）
+  projectConfessions.value.forEach((confessions, projectId) => {
+    const validConfessions = confessions.filter(c => {
+      const confessionTime = new Date(c.createdAt).getTime();
+      return confessionTime > thirtyDaysAgo;
+    });
+    
+    // 只保留最近 20 条
+    const limitedConfessions = validConfessions.slice(-20);
+    
+    if (limitedConfessions.length !== confessions.length) {
+      projectConfessions.value.set(projectId, limitedConfessions);
+      console.log(`[Simulation] 清理项目 ${projectId} 的过期告白：${confessions.length} -> ${limitedConfessions.length}`);
+    }
+  });
+  
+  // 清理过期项目运营数据（项目已删除）
+  projectOperationData.value.forEach((data, projectId) => {
+    const project = projectStore.projects.find(p => p.id === projectId);
+    if (!project) {
+      // 项目已删除，清除数据
+      projectOperationData.value.delete(projectId);
+      console.log(`[Simulation] 清理已删除项目 ${projectId} 的运营数据`);
+    }
+  });
+  
+  console.log('[Simulation] 过期数据清理完成');
+}
+
+function getHistory(): SimulationResult[] {
     return [...history.value];
   }
 
@@ -1206,6 +1679,32 @@ export const useSimulationStore = defineStore('simulation', () => {
    */
   function getProjectOperationData(projectId: string): ProjectOperationData | null {
     return projectOperationData.value.get(projectId) || null;
+  }
+
+  /**
+   * 优化 2: 初始化项目运营数据（项目发布时调用）
+   */
+  function initializeProjectOperationData(projectId: string): void {
+    const initialData: ProjectOperationData = {
+      projectId,
+      satisfaction: 0.7,        // 初始满意度 70%
+      retentionRate: 0.5,       // 初始留存率 50%
+      payRate: 0.05,           // 初始付费率 5%
+      activePlayers: 1000,      // 初始活跃玩家 1000
+      newPlayers: 0,
+      lostPlayers: 0,
+      payingPlayers: 0,
+      dailyRevenue: 0,
+      totalRevenue: 0,
+      gachaRevenue: 0,
+      totalDraws: 0,
+      ssrCount: 0,
+      srCount: 0,
+      history: []
+    };
+    
+    projectOperationData.value.set(projectId, initialData);
+    console.log(`[Simulation] 优化 2: 项目 ${projectId} 运营数据已初始化`);
   }
 
   /**
@@ -1273,6 +1772,10 @@ export const useSimulationStore = defineStore('simulation', () => {
     globalMetrics,
     projectComments,
     projectConfessions,
+    // Phase 5: 随机事件系统导出
+    dailyEventEngine,
+    triggeredEvents,
+    pendingNeutralEvents,
     initialize,
     tick,
     getHistory,
@@ -1283,8 +1786,14 @@ export const useSimulationStore = defineStore('simulation', () => {
     getProjectOperationData,
     getProjectComments,
     getProjectConfessions,
+    // 优化 2: 导出项目运营数据初始化函数
+    initializeProjectOperationData,
+    // 优化 4: 导出数据清理函数
+    cleanupExpiredData,
     saveToLocal,
     loadFromLocal,
-    reset
+    reset,
+    // Phase 5: 事件处理函数
+    handleNeutralEventChoice
   };
 });

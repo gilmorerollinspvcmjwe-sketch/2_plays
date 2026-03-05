@@ -87,3 +87,57 @@ export {
   type CollaborationOpportunity,
   type MarketRanking
 } from './competitorEngine';
+
+// 角色每日更新引擎
+export {
+  IntimacyDecayCalculator,
+  PopularityUpdater,
+  BirthdayDetector,
+  MentionAnalyzer,
+  CPHeatCalculator,
+  ReputationCalculator,
+  updateCharacterDaily,
+  intimacyDecayCalculator,
+  popularityUpdater,
+  birthdayDetector,
+  mentionAnalyzer,
+  cpHeatCalculator,
+  reputationCalculator,
+  type PopularityChange,
+  type BirthdayEvent,
+  type MentionStats,
+  type CPHeatData,
+  type ReputationScore,
+  type Comment
+} from './characterDailyEngine';
+
+// 季节和节假日系统
+export {
+  SeasonEventEngine,
+  seasonEventEngine,
+  type SeasonEvent,
+  type SeasonState,
+} from './seasonEventEngine';
+
+export {
+  SeasonType,
+  SeasonBuff,
+  HolidayBuff,
+  HolidayType,
+  DateBuffStatus,
+  getSeasonByMonth,
+  getCurrentSeason,
+  getSeasonBuff,
+  isWeekend,
+  getWeekendBuff,
+  isWinterVacation,
+  isSummerVacation,
+  getVacationBuff,
+  getFixedHolidays,
+  getSpringFestivalBuff,
+  checkHolidays,
+  checkAnniversary,
+  getDateBuffStatus,
+  getBuffDescription,
+  formatMultiplier,
+} from '@/utils/seasonUtils';

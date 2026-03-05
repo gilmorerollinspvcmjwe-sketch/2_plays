@@ -9,8 +9,11 @@ export type EmployeePosition = 'planning' | 'art' | 'program' | 'operation';
 // 员工等级
 export type EmployeeLevel = 'junior' | 'mid' | 'senior' | 'expert';
 
-// 员工技能
-export interface EmployeeSkills {
+// 员工职业路径（转职系统）
+export type EmployeeCareerPath = 'management' | 'technical' | 'general';
+
+// 扩展员工接口
+export interface Employee {
   planning: number;   // 策划技能 0-100
   art: number;        // 美术技能 0-100
   program: number;    // 程序技能 0-100
@@ -70,6 +73,11 @@ export interface Employee {
   // 时间戳
   hiredAt: string;
   lastPromotionAt?: string;
+  
+  // 转职系统相关
+  careerPath?: EmployeeCareerPath;  // 职业路径
+  managementSkill?: number;         // 管理技能（管理岗）
+  technicalDepth?: number;          // 技术深度（技术专家）
 }
 
 // 应聘者接口（招聘用）
@@ -117,6 +125,37 @@ export interface CreateEmployeeParams {
   specialty: EmployeeSpecialty;
   trait: EmployeeTrait;
   salary: number;
+}
+
+// 团队默契度
+export interface TeamSynergy {
+  teamId: string;
+  synergy: number;  // 默契度 0-100
+  members: string[];  // 成员 ID 列表
+}
+
+// 员工随机事件类型
+export type EmployeeRandomEventType =
+  | 'sick'      // 生病
+  | 'award'     // 获奖
+  | 'leave';    // 请假
+
+// 员工随机事件
+export interface EmployeeRandomEvent {
+  id: string;
+  employeeId: string;
+  type: EmployeeRandomEventType;
+  duration: number;  // 持续时间（天）
+  startTime: string;
+  endTime: string;
+  effect: {
+    fatigueChange?: number;      // 疲劳度变化
+    satisfactionChange?: number; // 满意度变化
+    efficiencyPenalty?: number;  // 效率惩罚
+    experienceBonus?: number;    // 经验奖励
+  };
+  description: string;
+  isActive: boolean;
 }
 
 // 初始化员工技能

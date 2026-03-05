@@ -78,6 +78,44 @@ export interface GenerateParams {
   count: number;
 }
 
+// 角色提及统计
+export interface CharacterMentionStats {
+  characterId: string;
+  characterName: string;
+  mentionCount: number;
+  positiveMentions: number;
+  negativeMentions: number;
+  neutralMentions: number;
+  sentimentScore: number; // -100 到 100
+}
+
+// CP 热度数据
+export interface CharacterCPHeat {
+  characterId1: string;
+  characterName1: string;
+  characterId2: string;
+  characterName2: string;
+  heat: number;
+  mentionCount: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
+// 角色口碑数据
+export interface CharacterReputationData {
+  characterId: string;
+  characterName: string;
+  averageRating: number; // 1-5
+  totalComments: number;
+  positiveRate: number; // 0-100
+  distribution: {
+    excellent: number; // 5 星
+    good: number;      // 4 星
+    average: number;   // 3 星
+    poor: number;      // 2 星
+    terrible: number;  // 1 星
+  };
+}
+
 export const useCommentStore = defineStore('comment', () => {
   // 引入 simulationStore
   const simulationStore = useSimulationStore();
@@ -923,6 +961,220 @@ export const useCommentStore = defineStore('comment', () => {
     }
   }
   
+  /**
+   * 分析评论中的角色提及
+   * @param characterMap 角色 ID 到名称的映射
+   * @returns 角色提及统计列表
+   */
+  function analyzeCharacterMentions(characterMap: Map<string, string>): CharacterMentionStats[] {
+    const statsMap = new Map<string, CharacterMentionStats>();
+    
+    // 初始化所有角色的统计
+    characterMap.forEach((name, id) => {
+      statsMap.set(id, {
+        characterId: id,
+        characterName: name,
+        mentionCount: 0,
+        positiveMentions: 0,
+        negativeMentions: 0,
+        neutralMentions: 0,
+        sentimentScore: 0
+      });
+    });
+    
+    // 遍历所有评论
+    comments.value.forEach(comment => {
+      // 检查每个角色是否被提及
+      characterMap.forEach((name, id) => {
+        if (comment.content.includes(name)) {
+          const stats = statsMap.get(id)!;
+          stats.mentionCount++;
+          
+          // 根据情感分类
+          if (comment.sentiment === 'positive') {
+            stats.positiveMentions++;
+          } else if (comment.sentiment === 'negative') {
+            stats.negativeMentions++;
+          } else {
+            stats.neutralMentions++;
+          }
+          
+          // 更新情感分数
+          stats.sentimentScore = ((stats.positiveMentions - stats.negativeMentions) / stats.mentionCount) * 100;
+        }
+      });
+    });
+    
+    return Array.from(statsMap.values());
+  }
+  
+  /**
+   * 计算 CP 热度
+   * @param characterMap 角色 ID 到名称的映射
+   * @returns CP 热度列表
+   */
+  function calculateCPHeat(characterMap: Map<string, string>): CharacterCPHeat[] {
+    const cpHeatMap = new Map<string, {
+      characterId1: string;
+      characterName1: string;
+      characterId2: string;
+      characterName2: string;
+      heat: number;
+      mentionCount: number;
+    }>();
+    
+    // 遍历所有评论
+    comments.value.forEach(comment => {
+      const mentionedChars: Array<{ id: string; name: string }> = [];
+      
+      // 找出被提及的角色
+      characterMap.forEach((name, id) => {
+        if (comment.content.includes(name)) {
+          mentionedChars.push({ id, name });
+        }
+      });
+      
+      // 如果提及了多个角色，计算 CP 热度
+      if (mentionedChars.length >= 2) {
+        for (let i = 0; i < mentionedChars.length; i++) {
+          for (let j = i + 1; j < mentionedChars.length; j++) {
+            const char1 = mentionedChars[i];
+            const char2 = mentionedChars[j];
+            
+            // 创建唯一的 CP 键（按 ID 排序保证一致性）
+            const cpKey = [char1.id, char2.id].sort().join('_');
+            
+            if (!cpHeatMap.has(cpKey)) {
+              cpHeatMap.set(cpKey, {
+                characterId1: char1.id,
+                characterName1: char1.name,
+                characterId2: char2.id,
+                characterName2: char2.name,
+                heat: 50, // 初始热度
+                mentionCount: 0
+              });
+            }
+            
+            const cpData = cpHeatMap.get(cpKey)!;
+            cpData.mentionCount++;
+            cpData.heat = Math.min(100, cpData.heat + 1);
+          }
+        }
+      }
+    });
+    
+    // 转换为数组并添加趋势
+    return Array.from(cpHeatMap.values()).map(cp => ({
+      ...cp,
+      trend: cp.heat > 70 ? 'up' : cp.heat < 30 ? 'down' : 'stable' as 'up' | 'down' | 'stable'
+    }));
+  }
+  
+  /**
+   * 计算角色口碑评分
+   * @param characterMap 角色 ID 到名称的映射
+   * @returns 角色口碑数据列表
+   */
+  function calculateCharacterReputation(characterMap: Map<string, string>): CharacterReputationData[] {
+    const reputationMap = new Map<string, {
+      characterId: string;
+      characterName: string;
+      ratings: number[];
+      totalComments: number;
+      positiveCount: number;
+    }>();
+    
+    // 初始化
+    characterMap.forEach((name, id) => {
+      reputationMap.set(id, {
+        characterId: id,
+        characterName: name,
+        ratings: [],
+        totalComments: 0,
+        positiveCount: 0
+      });
+    });
+    
+    // 分析评论
+    comments.value.forEach(comment => {
+      characterMap.forEach((name, id) => {
+        if (comment.content.includes(name)) {
+          const rep = reputationMap.get(id)!;
+          rep.totalComments++;
+          
+          // 根据情感推断评分
+          let rating = 3; // 默认中性
+          if (comment.sentiment === 'positive') {
+            rating = 4 + Math.floor(Math.random() * 2); // 4-5 星
+            rep.positiveCount++;
+          } else if (comment.sentiment === 'negative') {
+            rating = 1 + Math.floor(Math.random() * 2); // 1-2 星
+          }
+          
+          rep.ratings.push(rating);
+        }
+      });
+    });
+    
+    // 计算最终口碑数据
+    return Array.from(reputationMap.values()).map(rep => {
+      const distribution = {
+        excellent: 0, // 5 星
+        good: 0,      // 4 星
+        average: 0,   // 3 星
+        poor: 0,      // 2 星
+        terrible: 0   // 1 星
+      };
+      
+      rep.ratings.forEach(rating => {
+        switch (rating) {
+          case 5: distribution.excellent++; break;
+          case 4: distribution.good++; break;
+          case 3: distribution.average++; break;
+          case 2: distribution.poor++; break;
+          case 1: distribution.terrible++; break;
+        }
+      });
+      
+      const averageRating = rep.ratings.length > 0
+        ? Math.round((rep.ratings.reduce((a, b) => a + b, 0) / rep.ratings.length) * 2) / 2
+        : 0;
+      
+      const positiveRate = rep.totalComments > 0
+        ? Math.round((rep.positiveCount / rep.totalComments) * 100)
+        : 0;
+      
+      return {
+        characterId: rep.characterId,
+        characterName: rep.characterName,
+        averageRating,
+        totalComments: rep.totalComments,
+        positiveRate,
+        distribution
+      };
+    });
+  }
+  
+  /**
+   * 获取角色的热门 CP 排行
+   * @param characterId 角色 ID
+   * @param characterMap 角色 ID 到名称的映射
+   * @param limit 返回数量
+   * @returns CP 热度排行
+   */
+  function getCharacterCPRanking(
+    characterId: string, 
+    characterMap: Map<string, string>,
+    limit: number = 5
+  ): CharacterCPHeat[] {
+    const allCPHeat = calculateCPHeat(characterMap);
+    
+    return allCPHeat
+      .filter(cp => cp.characterId1 === characterId || cp.characterId2 === characterId)
+      .sort((a, b) => b.heat - a.heat)
+      .slice(0, limit);
+  }
+  
   // 初始化时加载数据
   loadFromLocal();
   
@@ -960,6 +1212,12 @@ export const useCommentStore = defineStore('comment', () => {
     initDefaultComments,
     generateQuitComments,
     generateReturnComments,
-    generateRecommendationComments
+    generateRecommendationComments,
+    
+    // 角色数据分析
+    analyzeCharacterMentions,
+    calculateCPHeat,
+    calculateCharacterReputation,
+    getCharacterCPRanking
   };
 });

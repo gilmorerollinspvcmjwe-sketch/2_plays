@@ -37,6 +37,19 @@ import {
   generateAnalysis
 } from '@/engine/operationPrediction';
 
+// 优化 5: 添加类型安全的数据结构定义
+export interface OperationStoreData {
+  gachaPools: typeof gachaPools.value;
+  events: typeof events.value;
+  incidents: typeof incidents.value;
+  hasInitializedDefaults: boolean;
+  newOperationPredictions: Array<[string, NewOperationPrediction]>;
+  activeOperationEffects: Array<[string, ActiveOperationEffect]>;
+  completedOperationEffects: PredictionVsActual[];
+  recentWelfareValue: number;
+  welfareHistory: typeof welfareHistory.value;
+}
+
 export interface PoolGachaStats {
   totalDraws: number;
   ssrCount: number;
@@ -167,6 +180,9 @@ export const useOperationStore = defineStore('operation', () => {
   const completedOperationEffects = ref<PredictionVsActual[]>([]);
   const recentWelfareValue = ref<number>(0);
   const welfareHistory = ref<Array<{ id: string; type: string; value: number; givenAt: string; prediction?: NewOperationPrediction }>>([]);
+  
+  // 优化 1: 初始化标志位
+  const hasInitializedDefaults = ref(false);
   
   // 从 simulationStore 获取运营数据
   const stats = computed<OperationStats>(() => ({
@@ -751,14 +767,16 @@ export const useOperationStore = defineStore('operation', () => {
   }
   
   /**
-   * 保存到本地存储
+   * 保存到本地存储（优化 5: 类型安全）
    */
   function saveToLocal(): void {
-    const data = {
+    const data: OperationStoreData = {
       gachaPools: gachaPools.value,
       events: events.value,
       incidents: incidents.value,
       stats: stats.value,
+      // 优化 1: 保存初始化标志位
+      hasInitializedDefaults: hasInitializedDefaults.value,
       // Phase 3: 新增数据
       newOperationPredictions: Array.from(newOperationPredictions.value.entries()),
       activeOperationEffects: Array.from(activeOperationEffects.value.entries()),
@@ -766,7 +784,14 @@ export const useOperationStore = defineStore('operation', () => {
       recentWelfareValue: recentWelfareValue.value,
       welfareHistory: welfareHistory.value
     };
-    localStorage.setItem('operation_data', JSON.stringify(data));
+    
+    try {
+      localStorage.setItem('operation_data', JSON.stringify(data));
+      console.log('[Operation] 数据保存成功');
+    } catch (error) {
+      console.error('[Operation] 数据保存失败:', error);
+      throw error;
+    }
   }
   
   /**
@@ -780,6 +805,11 @@ export const useOperationStore = defineStore('operation', () => {
         gachaPools.value = data.gachaPools || [];
         events.value = data.events || [];
         incidents.value = data.incidents || [];
+        
+        // 优化 1: 加载初始化标志位
+        if (data.hasInitializedDefaults !== undefined) {
+          hasInitializedDefaults.value = data.hasInitializedDefaults;
+        }
         
         // Phase 3: 加载新增数据
         if (data.newOperationPredictions) {
@@ -807,6 +837,12 @@ export const useOperationStore = defineStore('operation', () => {
    * 初始化默认数据
    */
   function initDefaultData(): void {
+    // 优化 1: 如果已经初始化过，直接返回
+    if (hasInitializedDefaults.value) {
+      return;
+    }
+    
+    // 只在真正首次加载时创建默认数据
     if (gachaPools.value.length === 0 && events.value.length === 0) {
       // 创建默认卡池
       const defaultPool: GachaPool = {
@@ -836,7 +872,7 @@ export const useOperationStore = defineStore('operation', () => {
         description: '庆祝游戏正式上线，登录即可领取丰厚奖励',
         startTime: new Date().toISOString(),
         endTime: new Date(Date.now() + 14 * 86400000).toISOString(),
-        rewards: ['钻石x1000', '限定头像框', 'SR角色卡'],
+        rewards: ['钻石 x1000', '限定头像框', 'SR 角色卡'],
         mechanics: ['每日登录', '完成任务'],
         budget: '高',
         participants: 0,
@@ -846,6 +882,9 @@ export const useOperationStore = defineStore('operation', () => {
       
       // 触发一个初始事件
       triggerRandomIncident();
+      
+      // 设置标志位
+      hasInitializedDefaults.value = true;
       
       saveToLocal();
     }

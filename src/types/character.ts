@@ -99,6 +99,19 @@ export interface CharacterDepth {
   aiPersonality?: AIPersonality;
 }
 
+// 角色口碑
+export interface CharacterReputation {
+  averageRating: number;      // 平均评分 1-5
+  totalComments: number;      // 总评论数
+  positiveRate: number;       // 好评率 0-100
+}
+
+// 互动数据
+export interface CharacterInteraction {
+  mentionCount: number;       // 被提及次数
+  cpHeat: Map<string, number>; // CP 热度 Map<其他角色 ID, 热度值>
+}
+
 // 角色模板
 export interface CharacterTemplate {
   id: string;

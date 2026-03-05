@@ -163,7 +163,7 @@ export const useProjectStore = defineStore('project', () => {
   /**
    * 推进项目状态
    */
-  function advanceProjectStatus(projectId: string): { success: boolean; message: string } {
+  async function advanceProjectStatus(projectId: string): Promise<{ success: boolean; message: string }> {
     const project = projects.value.find(p => p.id === projectId);
     if (!project) {
       return { success: false, message: '项目不存在' };
@@ -185,7 +185,7 @@ export const useProjectStore = defineStore('project', () => {
     const oldStatus = project.status;
     project.status = statusFlow[currentIndex + 1];
     project.updatedAt = new Date().toISOString();
-
+    
     // 记录历史事件
     addProjectHistory(projectId, {
       id: `event_${Date.now()}`,
@@ -194,12 +194,18 @@ export const useProjectStore = defineStore('project', () => {
       description: `项目从「${getProjectStatusName(oldStatus)}」进入「${getProjectStatusName(project.status)}」`,
       timestamp: new Date().toISOString()
     });
-
+    
     // 如果是发布，记录发布时间
     if (project.status === 'released') {
       project.releasedAt = new Date().toISOString();
     }
-
+    
+    // 优化 2: 如果项目进入运营阶段，初始化运营数据
+    if (project.status === 'operating') {
+      const { initializeProjectOperationData } = await import('./simulationStore');
+      initializeProjectOperationData(projectId);
+    }
+    
     saveToLocal();
     return { success: true, message: '状态推进成功' };
   }

@@ -25,6 +25,17 @@ import {
   type CharacterQualityScore,
   type PlotQualityScore
 } from '@/engine/qualityScoring';
+import type { CharacterReputation, CharacterInteraction } from '@/types/character';
+import { 
+  updateCharacterDaily,
+  intimacyDecayCalculator,
+  popularityUpdater,
+  birthdayDetector,
+  mentionAnalyzer,
+  cpHeatCalculator,
+  reputationCalculator,
+  type Comment as EngineComment
+} from '@/engine/characterDailyEngine';
 
 // 角色人气数据
 export interface CharacterPopularity {
@@ -33,6 +44,12 @@ export interface CharacterPopularity {
   cpHeat: Record<string, number>; // CP 热度 {otherCharId: heat}
   gachaCount: number;      // 卡池抽取次数
   lastUpdated: string;     // 最后更新时间
+  mentionCount: number;    // 被提及次数
+  positiveMentions: number; // 正面提及
+  negativeMentions: number; // 负面提及
+  neutralMentions: number;  // 中性提及
+  reputationScore: number;  // 口碑评分 1-5
+  reputationReviewCount: number; // 口碑评价数
 }
 
 // 角色亲密度数据
@@ -106,6 +123,8 @@ export interface Character {
   intimacy?: CharacterIntimacy;
   birthday?: CharacterBirthday;
   bond?: CharacterBond; // 角色羁绊
+  reputation?: CharacterReputation; // 角色口碑
+  interaction?: CharacterInteraction; // 互动数据
   createdAt: string;
 }
 
@@ -419,7 +438,13 @@ export const useGameStore = defineStore('game', () => {
       discussionHeat: 0,
       cpHeat: {},
       gachaCount: 0,
-      lastUpdated: new Date().toISOString()
+      lastUpdated: new Date().toISOString(),
+      mentionCount: 0,
+      positiveMentions: 0,
+      negativeMentions: 0,
+      neutralMentions: 0,
+      reputationScore: 0,
+      reputationReviewCount: 0
     };
   }
   
@@ -1949,6 +1974,189 @@ export const useGameStore = defineStore('game', () => {
     return levelThanks[Math.floor(Math.random() * levelThanks.length)];
   }
   
+  /**
+   * 角色每日更新
+   * 包含亲密度衰减、人气变化、生日事件、评论提及统计等
+   */
+  async function updateCharacterDaily(): Promise<{
+    success: boolean;
+    message: string;
+    popularityChanges?: Array<{ characterId: string; change: number; reason: string }>;
+    birthdayEvents?: Array<{ characterId: string; characterName: string; popularityBoost: number }>;
+    intimacyUpdates?: Array<{ characterId: string; oldIntimacy: number; newIntimacy: number }>;
+    mentionStats?: Array<{ characterId: string; mentionCount: number }>;
+  }> {
+    if (!currentGameId.value) {
+      return { success: false, message: '未选择游戏' };
+    }
+    
+    const game = games.value.find(g => g.id === currentGameId.value);
+    if (!game) {
+      return { success: false, message: '游戏不存在' };
+    }
+    
+    try {
+      // 准备角色数据
+      const characters = game.characters.map(char => ({
+        id: char.id,
+        name: char.name,
+        popularity: char.popularity?.popularity || 50,
+        intimacy: char.intimacy?.level || 1,
+        birthday: char.birthday ? `${char.birthday.month}-${char.birthday.day}` : undefined,
+        lastInteraction: char.intimacy?.lastInteraction 
+          ? new Date(char.intimacy.lastInteraction).getTime() 
+          : undefined
+      }));
+      
+      // 准备评论数据（从 commentStore 获取）
+      const commentStore = useCommentStore();
+      const comments: EngineComment[] = commentStore.comments.map(c => ({
+        id: c.id,
+        content: c.content,
+        sentiment: c.sentiment as 'positive' | 'negative' | 'neutral',
+        timestamp: new Date(c.createdAt).getTime()
+      }));
+      
+      // 准备项目数据（使用游戏资源作为参考）
+      const projectData: Record<string, { dailyIncome: number; expectedIncome: number }> = {};
+      game.characters.forEach(char => {
+        // 基于角色人气估算收入
+        const baseIncome = 1000;
+        const popularityFactor = (char.popularity?.popularity || 50) / 50;
+        projectData[char.id] = {
+          dailyIncome: Math.floor(baseIncome * popularityFactor),
+          expectedIncome: baseIncome
+        };
+      });
+      
+      // 调用引擎进行每日更新
+      const result = await updateCharacterDaily({
+        characters,
+        comments,
+        projectData,
+        currentDate: new Date()
+      });
+      
+      // 应用人气变化
+      const popularityChanges: Array<{ characterId: string; change: number; reason: string }> = [];
+      result.popularityChanges.forEach(change => {
+        const character = game.characters.find(c => c.id === change.characterId);
+        if (character) {
+          if (!character.popularity) {
+            character.popularity = initCharacterPopularity(character.id);
+          }
+          const oldPop = character.popularity.popularity;
+          character.popularity.popularity = change.newPopularity;
+          popularityChanges.push({
+            characterId: change.characterId,
+            change: change.change,
+            reason: change.reason
+          });
+        }
+      });
+      
+      // 处理生日事件
+      const birthdayEvents: Array<{ characterId: string; characterName: string; popularityBoost: number }> = [];
+      result.birthdayEvents.forEach(event => {
+        const character = game.characters.find(c => c.id === event.characterId);
+        if (character) {
+          if (!character.popularity) {
+            character.popularity = initCharacterPopularity(character.id);
+          }
+          character.popularity.popularity = Math.min(100, character.popularity.popularity + event.popularityBoost);
+          character.popularity.discussionHeat += event.heatBoost;
+          birthdayEvents.push({
+            characterId: event.characterId,
+            characterName: event.characterName,
+            popularityBoost: event.popularityBoost
+          });
+        }
+      });
+      
+      // 应用亲密度衰减
+      const intimacyUpdates: Array<{ characterId: string; oldIntimacy: number; newIntimacy: number }> = [];
+      result.intimacyUpdates.forEach((newIntimacy, characterId) => {
+        const character = game.characters.find(c => c.id === characterId);
+        if (character && character.intimacy) {
+          const oldIntimacy = character.intimacy.level;
+          // 将经验值转换为新等级
+          const newLevel = calculateIntimacyLevel(newIntimacy);
+          character.intimacy.totalExperience = newIntimacy;
+          character.intimacy.level = newLevel;
+          if (oldIntimacy !== newLevel) {
+            intimacyUpdates.push({
+              characterId,
+              oldIntimacy: oldIntimacy,
+              newIntimacy: newLevel
+            });
+          }
+        }
+      });
+      
+      // 更新提及统计
+      result.mentionStats.forEach((stats, characterId) => {
+        const character = game.characters.find(c => c.id === characterId);
+        if (character) {
+          if (!character.popularity) {
+            character.popularity = initCharacterPopularity(character.id);
+          }
+          character.popularity.mentionCount = stats.mentionCount;
+          character.popularity.positiveMentions = stats.positiveMentions;
+          character.popularity.negativeMentions = stats.negativeMentions;
+          character.popularity.neutralMentions = stats.neutralMentions;
+        }
+      });
+      
+      // 更新 CP 热度
+      result.cpHeatData.forEach((cpData, cpKey) => {
+        const char1 = game.characters.find(c => c.id === cpData.characterId1);
+        const char2 = game.characters.find(c => c.id === cpData.characterId2);
+        if (char1 && char2) {
+          if (!char1.popularity) char1.popularity = initCharacterPopularity(char1.id);
+          if (!char2.popularity) char2.popularity = initCharacterPopularity(char2.id);
+          
+          // 双向更新 CP 热度
+          char1.popularity.cpHeat[cpData.characterId2] = cpData.heat;
+          char2.popularity.cpHeat[cpData.characterId1] = cpData.heat;
+        }
+      });
+      
+      // 更新口碑评分
+      result.reputationScores.forEach(score => {
+        const character = game.characters.find(c => c.id === score.characterId);
+        if (character) {
+          if (!character.popularity) {
+            character.popularity = initCharacterPopularity(character.id);
+          }
+          character.popularity.reputationScore = score.score;
+          character.popularity.reputationReviewCount = score.reviewCount;
+        }
+      });
+      
+      // 保存更改
+      game.updatedAt = new Date().toISOString();
+      saveToLocal();
+      
+      return {
+        success: true,
+        message: '角色每日更新完成',
+        popularityChanges,
+        birthdayEvents,
+        intimacyUpdates,
+        mentionStats: result.mentionStats.map((stats, characterId) => ({
+          characterId,
+          mentionCount: stats.mentionCount
+        }))
+      };
+    } catch (error) {
+      console.error('角色每日更新失败:', error);
+      return { 
+        success: false, 
+        message: '角色每日更新失败，请稍后重试' 
+      };
+    }
+  }
+  
   // 初始化时加载数据
   loadFromLocal();
   
@@ -2036,6 +2244,9 @@ export const useGameStore = defineStore('game', () => {
     getUnreadVoiceCount,
     getBondLevelName,
     getCharacterComfort,
-    getCharacterThanks
+    getCharacterThanks,
+    
+    // 角色每日更新
+    updateCharacterDaily
   };
 });
