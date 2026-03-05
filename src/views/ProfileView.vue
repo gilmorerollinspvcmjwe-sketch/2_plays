@@ -14,13 +14,18 @@
       </div>
     </div>
 
+    <CreatorProfile
+      :growth="creatorStore.growth"
+      @upgrade-skill="handleUpgradeSkill"
+    />
+
     <div class="stats-grid">
       <div class="stat-item">
-        <div class="stat-value">0</div>
+        <div class="stat-value">{{ creatorStore.growth.stats.gamesCreated }}</div>
         <div class="stat-label">创建游戏</div>
       </div>
       <div class="stat-item">
-        <div class="stat-value">0</div>
+        <div class="stat-value">{{ formatNumber(creatorStore.growth.stats.totalPlayers) }}</div>
         <div class="stat-label">总人气</div>
       </div>
       <div class="stat-item">
@@ -35,16 +40,22 @@
 
     <TitleSelector />
 
+    <PlayerSegments
+      v-if="communityStore.communityData"
+      :community="communityStore.communityData"
+      :strategies="communityStore.getAllStrategies()"
+    />
+
     <van-cell-group inset class="menu-list">
-      <van-cell title="积分商城" is-link to="/points">
+      <van-cell title="玩家社区分析" is-link to="/admin">
         <template #icon>
-          <van-icon name="gem-o" class="menu-icon" color="#FFD700" />
+          <van-icon name="chart-trending-o" class="menu-icon" color="#722ed1" />
         </template>
       </van-cell>
       
-      <van-cell title="我的游戏" is-link>
+      <van-cell title="积分商城" is-link to="/points">
         <template #icon>
-          <van-icon name="apps-o" class="menu-icon" color="#FF69B4" />
+          <van-icon name="gem-o" class="menu-icon" color="#FFD700" />
         </template>
       </van-cell>
       
@@ -54,7 +65,24 @@
         </template>
       </van-cell>
       
-      <van-cell title="创建新公司" is-link to="/company-setup">
+      <van-cell title="团队管理" is-link to="/team-management">
+        <template #icon>
+          <van-icon name="friends-o" class="menu-icon" color="#1989fa" />
+        </template>
+      </van-cell>
+      
+      <van-cell title="招聘员工" is-link to="/recruit">
+        <template #icon>
+          <van-icon name="user-add-o" class="menu-icon" color="#07c160" />
+        </template>
+      </van-cell>
+      
+      <van-cell 
+        v-if="!companyStore.hasCompany" 
+        title="创建新公司" 
+        is-link 
+        to="/company-setup"
+      >
         <template #icon>
           <van-icon name="add-o" class="menu-icon" color="#07c160" />
         </template>
@@ -63,12 +91,6 @@
       <van-cell title="关于我们" is-link to="/about">
         <template #icon>
           <van-icon name="info-o" class="menu-icon" color="#1989fa" />
-        </template>
-      </van-cell>
-      
-      <van-cell title="设置" is-link>
-        <template #icon>
-          <van-icon name="setting-o" class="menu-icon" color="#666" />
         </template>
       </van-cell>
     </van-cell-group>
@@ -81,14 +103,65 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import { usePointsStore } from '@/stores/points';
+import { useCommunityStore } from '@/stores/communityStore';
+import { usePlayerStore } from '@/stores/playerStore';
+import { useCreatorGrowthStore } from '@/stores/creatorGrowth';
+import { useCompanyStore } from '@/stores/companyStore';
+import type { SkillType } from '@/types/creatorGrowth';
 import SignInCalendar from '@/components/signin/SignInCalendar.vue';
 import AchievementWall from '@/components/achievement/AchievementWall.vue';
 import TitleSelector from '@/components/achievement/TitleSelector.vue';
+import PlayerSegments from '@/components/community/PlayerSegments.vue';
+import CreatorProfile from '@/components/creator/CreatorProfile.vue';
+import { showToast } from 'vant';
 
 const pointsStore = usePointsStore();
+const communityStore = useCommunityStore();
+const playerStore = usePlayerStore();
+const creatorStore = useCreatorGrowthStore();
+const companyStore = useCompanyStore();
 const currentTitle = computed(() => pointsStore.currentTitle);
+
+function formatNumber(num: number): string {
+  if (num >= 10000) return (num / 10000).toFixed(1) + 'w';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+  return num.toString();
+}
+
+async function handleUpgradeSkill(type: SkillType) {
+  const skillPoints = creatorStore.availableSkillPoints;
+  
+  if (skillPoints <= 0) {
+    showToast('技能点不足，升级创作者等级可获得技能点');
+    return;
+  }
+  
+  const result = await pointsStore.spendPoints(100, '技能升级');
+  
+  if (result.success) {
+    const upgradeResult = creatorStore.upgradeSkill(type);
+    if (upgradeResult.success) {
+      showToast(`${upgradeResult.message}，消耗 100 积分`);
+    } else {
+      showToast(upgradeResult.message);
+      await pointsStore.spendPoints(-100, '技能升级失败返还');
+    }
+  } else {
+    showToast('积分不足，需要 100 积分');
+  }
+}
+
+onMounted(() => {
+  // 初始化社区数据
+  communityStore.initializeCommunity();
+  
+  // 从 playerStore 同步数据
+  if (playerStore.players.length > 0) {
+    communityStore.updateFromPlayers(playerStore.players);
+  }
+});
 </script>
 
 <style scoped lang="scss">

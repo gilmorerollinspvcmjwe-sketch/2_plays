@@ -5,9 +5,22 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 
 import { errorHandler } from './middleware/errorHandler';
-import { apiRouter } from './routes/api';
+import { apiRouter, setAIServiceManager } from './routes/api';
+import { createAIServiceManager } from './services/ai';
 
 dotenv.config();
+
+const aiManager = createAIServiceManager({
+  apiKeys: {
+    minimax: process.env.MINIMAX_API_KEY || '',
+    kimi: process.env.KIMI_API_KEY || '',
+    deepseek: process.env.DEEPSEEK_API_KEY || '',
+    doubao: process.env.DOUBAO_API_KEY || '',
+    qwen: process.env.QWEN_API_KEY || ''
+  }
+});
+
+setAIServiceManager(aiManager);
 
 const app: Application = express();
 const PORT = process.env.PORT || 3000;

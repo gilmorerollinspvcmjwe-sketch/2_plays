@@ -186,6 +186,40 @@
       </div>
     </div>
 
+    <!-- 运营策略建议 -->
+    <div class="strategy-section">
+      <h4 class="section-title">
+        <van-icon name="lightbulb-o" />
+        运营策略建议
+      </h4>
+      <div class="strategy-list">
+        <div
+          v-for="strat in strategies"
+          :key="strat.type"
+          class="strategy-card"
+          :class="{ 'urgent': isUrgentSegment(strat.type) }"
+        >
+          <div class="strategy-header">
+            <div class="strategy-icon" :style="{ background: strat.color }">
+              <van-icon :name="strat.icon" size="18" />
+            </div>
+            <div class="strategy-info">
+              <span class="strategy-name">{{ strat.name }}</span>
+              <van-tag
+                v-if="isUrgentSegment(strat.type)"
+                type="danger"
+                size="mini"
+                round
+              >
+                需关注
+              </van-tag>
+            </div>
+          </div>
+          <p class="strategy-content">{{ strat.strategy }}</p>
+        </div>
+      </div>
+    </div>
+
     <!-- 玩家类型详情弹窗 -->
     <van-popup
       v-model:show="showDetail"
@@ -268,6 +302,11 @@ import { PLAYER_SEGMENTS, type PlayerCommunity, type PlayerSegmentType } from '@
 
 const props = defineProps<{
   community: PlayerCommunity;
+  strategies?: Array<{
+    type: PlayerSegmentType;
+    name: string;
+    strategy: string;
+  }>;
 }>();
 
 const showDetail = ref(false);
@@ -310,6 +349,33 @@ const satisfactionColor = computed(() => {
   if (s >= 60) return '#faad14';
   return '#ff4d4f';
 });
+
+const strategies = computed(() => {
+  if (props.strategies && props.strategies.length > 0) {
+    return props.strategies.map(s => {
+      const config = PLAYER_SEGMENTS.find(seg => seg.type === s.type);
+      return {
+        ...s,
+        icon: config?.icon || 'lightbulb-o',
+        color: config?.color || '#999'
+      };
+    });
+  }
+  
+  return PLAYER_SEGMENTS.map(seg => ({
+    type: seg.type,
+    name: seg.name,
+    strategy: `${seg.name}：${seg.description}。建议关注${seg.focusAreas.join('、')}等方面`,
+    icon: seg.icon,
+    color: seg.color
+  }));
+});
+
+function isUrgentSegment(type: PlayerSegmentType): boolean {
+  const segment = props.community.segments.find(s => s.type === type);
+  if (!segment) return false;
+  return segment.satisfaction < 60 || segment.sentiment < -0.3;
+}
 
 function formatNumber(num: number): string {
   if (num >= 10000) {
@@ -632,6 +698,75 @@ function showSegmentDetail(segment: any) {
     margin: 0 0 12px 0;
     font-size: 16px;
     color: #333;
+  }
+}
+
+.strategy-section {
+  margin-bottom: 20px;
+  
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 12px 0;
+    font-size: 16px;
+    color: #333;
+  }
+}
+
+.strategy-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.strategy-card {
+  background: white;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  transition: all 0.3s ease;
+  
+  &.urgent {
+    border: 1px solid #ff4d4f;
+    background: linear-gradient(135deg, #FFF5F7 0%, #FFE4E8 100%);
+  }
+  
+  .strategy-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    
+    .strategy-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    
+    .strategy-info {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      
+      .strategy-name {
+        font-size: 14px;
+        font-weight: bold;
+        color: #333;
+      }
+    }
+  }
+  
+  .strategy-content {
+    margin: 0;
+    font-size: 13px;
+    color: #666;
+    line-height: 1.6;
   }
 }
 

@@ -53,6 +53,14 @@
           />
         </div>
 
+        <div class="section-card">
+          <h3 class="section-title">
+            <van-icon name="volume-o" />
+            角色心声
+          </h3>
+          <CharacterVoice :character-id="character.id" />
+        </div>
+
         <div class="section-card" v-if="intimacyLevel >= 5">
           <h3 class="section-title">
             <van-icon name="calendar-o" />
@@ -131,27 +139,50 @@
       :current-intimacy="character?.intimacy?.totalExperience || 0"
       @complete="handleDateComplete"
     />
+
+    <!-- 生日通知 -->
+    <BirthdayNotification
+      :character="character"
+      :show="showBirthdayNotification"
+      @celebrate="handleCelebrateBirthday"
+      @close="showBirthdayNotification = false"
+    />
+
+    <!-- 生日礼物弹窗 -->
+    <BirthdayGiftModal
+      v-model:show="showGiftModal"
+      :character-id="character?.id || ''"
+      :character-name="character?.name || ''"
+      @gift-sent="handleGiftSent"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { showToast, showDialog } from 'vant';
+import { showToast, showSuccessToast, showDialog } from 'vant';
 import { useGameStore, INTIMACY_LEVEL_NAMES } from '@/stores/gameStore';
+import { usePointsStore } from '@/stores/points';
 import IntimacyBar from '@/components/character/IntimacyBar.vue';
+import CharacterVoice from '@/components/character/CharacterVoice.vue';
 import DateSelector from '@/components/date/DateSelector.vue';
 import DateScene from '@/components/date/DateScene.vue';
+import BirthdayNotification from '@/components/character/BirthdayNotification.vue';
+import BirthdayGiftModal from '@/components/character/BirthdayGiftModal.vue';
 import type { DateScene as DateSceneType } from '@/data/templates/dates';
 
 const route = useRoute();
 const router = useRouter();
 const gameStore = useGameStore();
+const pointsStore = usePointsStore();
 
 const loading = ref(true);
 const showDateSelector = ref(false);
 const showDateScene = ref(false);
 const currentDateScene = ref<DateSceneType | null>(null);
+const showBirthdayNotification = ref(false);
+const showGiftModal = ref(false);
 
 const characterId = computed(() => route.params.characterId as string);
 const gameId = computed(() => route.params.gameId as string);
@@ -189,7 +220,12 @@ const headerGradient = computed(() => {
 
 onMounted(() => {
   gameStore.setCurrentGame(gameId.value);
+  
+  // 检查是否是角色生日
   setTimeout(() => {
+    if (character.value && gameStore.isCharacterBirthday(character.value.id)) {
+      showBirthdayNotification.value = true;
+    }
     loading.value = false;
   }, 300);
 });
@@ -231,6 +267,25 @@ function handleDateComplete(totalIntimacy: number) {
   
   showDateScene.value = false;
   currentDateScene.value = null;
+}
+
+function handleCelebrateBirthday(characterId: string) {
+  showBirthdayNotification.value = false;
+  showGiftModal.value = true;
+}
+
+function handleGiftSent(giftId: string, cost: number) {
+  // 庆祝生日并赠送礼物
+  const result = gameStore.celebrateBirthday(characterId.value);
+  
+  if (result.success) {
+    showSuccessToast(`赠送成功！消耗 ${cost} 积分`);
+    
+    // 解锁成就
+    if (pointsStore) {
+      pointsStore.unlockAchievement('birthday_celebrator');
+    }
+  }
 }
 </script>
 

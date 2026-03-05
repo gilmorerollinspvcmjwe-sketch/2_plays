@@ -19,6 +19,12 @@ import {
   canInteract,
   BOND_INTERACTIONS
 } from '@/types/characterBond';
+import { 
+  calculateCharacterQuality, 
+  calculatePlotQuality,
+  type CharacterQualityScore,
+  type PlotQualityScore
+} from '@/engine/qualityScoring';
 
 // 角色人气数据
 export interface CharacterPopularity {
@@ -774,14 +780,24 @@ export const useGameStore = defineStore('game', () => {
    */
   function getCharacterPopularity(characterId: string): CharacterPopularity | null {
     if (!currentGameId.value) return null;
-    
+
     const game = games.value.find(g => g.id === currentGameId.value);
     if (!game) return null;
-    
+
     const character = game.characters.find(c => c.id === characterId);
     if (!character) return null;
-    
+
     return character.popularity || initCharacterPopularity(characterId);
+  }
+
+  /**
+   * 增加角色人气（便捷方法）
+   * @param characterId 角色ID
+   * @param amount 增加量
+   * @returns 是否成功
+   */
+  function increaseCharacterPopularity(characterId: string, amount: number): boolean {
+    return updateCharacterPopularity(characterId, { popularity: amount });
   }
   
   /**
@@ -1966,6 +1982,7 @@ export const useGameStore = defineStore('game', () => {
     initCharacterPopularity,
     updateCharacterPopularity,
     getCharacterPopularity,
+    increaseCharacterPopularity,
     getPopularityRanking,
     calculatePopularityBonus,
     deleteGame,
@@ -1999,6 +2016,16 @@ export const useGameStore = defineStore('game', () => {
     calculateGameRating,
     getRatingGrade,
     getRatingGradeColor,
+    
+    // 质量评分相关
+    getCharacterQuality: (characterId: string): CharacterQualityScore | null => {
+      const character = characters.value.find(c => c.id === characterId);
+      return character ? calculateCharacterQuality(character) : null;
+    },
+    getPlotQuality: (plotId: string): PlotQualityScore | null => {
+      const plot = plots.value.find(p => p.id === plotId);
+      return plot ? calculatePlotQuality(plot, characters.value) : null;
+    },
     
     // 角色羁绊相关
     getCharacterBond,

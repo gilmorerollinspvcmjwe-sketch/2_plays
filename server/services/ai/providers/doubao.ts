@@ -3,8 +3,8 @@
  * 多模态处理专家
  */
 
-import { BaseAIService } from './base';
-import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse, Message, ImageContent } from './types';
+import { BaseAIService } from '../base';
+import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse, Message, ImageContent } from '../types';
 
 export class DoubaoService extends BaseAIService {
   constructor(config: ProviderConfig) {

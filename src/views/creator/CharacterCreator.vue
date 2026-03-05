@@ -715,12 +715,14 @@ import { TemplateManager } from '@/utils/templateManager';
 import { usePointsStore } from '@/stores/points';
 import { useGameStore, type ArtStyle, type VoiceActorLevel, type CharacterBirthday } from '@/stores/gameStore';
 import { useProjectStore } from '@/stores/projectStore';
+import { useCreatorGrowthStore, SKILL_EFFECTS } from '@/stores/creatorGrowth';
 import { showToast, showDialog } from 'vant';
 import type { HiddenAttributes, GrowthArcType, CharacterRelationship, CharacterSecret } from '@/types/character';
 import { generatePersonality, generateBehavior, generateSampleDialogue } from '@/utils/characterAI';
 
 const router = useRouter();
 const projectStore = useProjectStore();
+const creatorStore = useCreatorGrowthStore();
 const currentStep = ref(0);
 const selectedAppearance = ref<any>(null);
 const selectedClothing = ref<any>(null);
@@ -1372,6 +1374,10 @@ const createCharacter = () => {
     return;
   }
 
+  // 获取美术鉴赏技能等级并应用加成
+  const artLevel = creatorStore.getSkillLevel('artAppreciation');
+  const popularityBonus = SKILL_EFFECTS.artAppreciation.characterPopularityBonus(artLevel);
+
   const birthday: CharacterBirthday = {
     month: birthdayMonth.value,
     day: birthdayDay.value
@@ -1391,7 +1397,12 @@ const createCharacter = () => {
     artStyle: selectedArtStyle.value,
     voiceActor: selectedVoiceActor.value,
     background: selectedBackground.value?.background || selectedBackground.value?.description || '',
-    birthday
+    birthday,
+    // 应用美术鉴赏加成到角色人气
+    popularity: {
+      base: Math.round(100 * (1 + popularityBonus)),
+      bonus: Math.round(popularityBonus * 100)
+    }
   };
 
   const character = gameStore.addCharacter(characterData);
@@ -1404,6 +1415,12 @@ const createCharacter = () => {
     } else {
       showToast('角色创建成功！');
     }
+
+    // 显示技能加成提示
+    if (artLevel > 0) {
+      showToast(`美术鉴赏Lv.${artLevel}加成: 人气+${artLevel * 4}%`);
+    }
+
     emit('create', character);
 
     // 重置所有数据
@@ -1481,9 +1498,9 @@ const saveAndExit = () => {
 const showProjectPicker = ref(false);
 const selectedProject = ref<any>(null);
 
-// 可选项目列表（开发中的项目）
+// 可选项目列表（所有项目）
 const availableProjects = computed(() => {
-  return projectStore.projects.filter(p => p.status === 'developing');
+  return projectStore.projects;
 });
 
 // 选择项目

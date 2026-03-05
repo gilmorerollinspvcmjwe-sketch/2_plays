@@ -336,6 +336,13 @@ export const usePointsStore = defineStore('points', () => {
     amount: number,
     reason: string
   ): Promise<{ success: boolean; message: string }> {
+    if (amount < 0) {
+      balance.value += Math.abs(amount);
+      addToHistory('earn', Math.abs(amount), reason);
+      saveToLocal();
+      return { success: true, message: `返还${Math.abs(amount)}积分` };
+    }
+    
     if (balance.value < amount) {
       return { 
         success: false, 

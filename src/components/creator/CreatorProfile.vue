@@ -203,13 +203,12 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { CreatorGrowth, SkillType, AchievementType } from '@/types/creatorGrowth';
+import type { CreatorGrowth, SkillType } from '@/types/creatorGrowth';
 import {
   CREATOR_LEVELS,
   SKILL_CONFIGS,
   ACHIEVEMENT_CONFIGS,
-  getLevelProgress,
-  upgradeSkill as upgradeSkillFn
+  getLevelProgress
 } from '@/types/creatorGrowth';
 import { showToast } from 'vant';
 
@@ -347,14 +346,7 @@ function showAchievementDetail(achievement: any) {
 }
 
 function upgradeSkill(type: SkillType) {
-  const result = upgradeSkillFn(props.growth, type);
-  if (result.success) {
-    emit('upgrade-skill', type);
-    showToast(result.message);
-    showSkillPopup.value = false;
-  } else {
-    showToast(result.message);
-  }
+  emit('upgrade-skill', type);
 }
 </script>
 

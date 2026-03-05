@@ -7,6 +7,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { nanoid } from 'nanoid';
 import { DataLoader } from '@/utils/dataLoader';
+import { useCommentStore } from './commentStore';
 
 /**
  * 玩家状态枚举
@@ -429,44 +430,59 @@ export const usePlayerStore = defineStore('player', () => {
 
   /**
    * 更新单个玩家状态
+   * 状态变化时自动触发评论生成
    */
   function updatePlayerState(player: Player): void {
+    const oldState = player.state;
     const daysSinceLastLogin = getDaysSince(player.lastLoginAt);
     const actualRate = player.totalDraws > 0 ? player.ssrCount / player.totalDraws : 0;
     const expectedRate = gachaConfig.value.ssrRate;
+    let newState = oldState;
 
     // 新玩家：抽卡次数少于 10 次
     if (player.totalDraws < 10) {
-      player.state = PlayerState.NEW;
-      return;
+      newState = PlayerState.NEW;
     }
-
     // 流失玩家：超过 30 天未登录
-    if (daysSinceLastLogin > 30) {
-      player.state = PlayerState.LOST;
-      return;
+    else if (daysSinceLastLogin > 30) {
+      newState = PlayerState.LOST;
     }
-
     // 回流玩家：曾经流失但现在登录了（通过 lastLoginAt 判断）
-    if (player.state === PlayerState.LOST && daysSinceLastLogin <= 7) {
-      player.state = PlayerState.RETURNED;
-      return;
+    else if (oldState === PlayerState.LOST && daysSinceLastLogin <= 7) {
+      newState = PlayerState.RETURNED;
     }
-
     // 有流失风险：实际概率远低于期望概率（小于 50%）
-    if (actualRate < expectedRate * 0.5) {
-      player.state = PlayerState.AT_RISK;
-      return;
+    else if (actualRate < expectedRate * 0.5) {
+      newState = PlayerState.AT_RISK;
     }
-
     // 付费玩家：假设抽卡次数超过 1000 次为付费玩家
-    if (player.totalDraws >= 1000) {
-      player.state = PlayerState.PAYING;
-      return;
+    else if (player.totalDraws >= 1000) {
+      newState = PlayerState.PAYING;
+    }
+    // 活跃玩家
+    else {
+      newState = PlayerState.ACTIVE;
     }
 
-    // 活跃玩家
-    player.state = PlayerState.ACTIVE;
+    // 检测状态变化并触发评论生成
+    if (oldState !== newState) {
+      const commentStore = useCommentStore();
+      
+      // 从活跃/付费变为流失 → 生成退坑评论
+      if ((oldState === PlayerState.ACTIVE || oldState === PlayerState.PAYING) && newState === PlayerState.LOST) {
+        commentStore.generateQuitComments(player.id);
+      }
+      // 从流失变为回归 → 生成真香评论
+      else if (oldState === PlayerState.LOST && newState === PlayerState.RETURNED) {
+        commentStore.generateReturnComments(player.id);
+      }
+      // 变为付费玩家 → 30%概率生成安利评论
+      else if (newState === PlayerState.PAYING && Math.random() < 0.3) {
+        commentStore.generateRecommendationComments(player.id);
+      }
+      
+      player.state = newState;
+    }
   }
 
   /**
@@ -483,10 +499,12 @@ export const usePlayerStore = defineStore('player', () => {
    * 自动更新玩家状态（定时任务，每小时执行）
    * 检查玩家登录时间，自动转换流失/回归状态
    */
-  function updatePlayerStatesAutomatically(commentStore: any): void {
+  function updatePlayerStatesAutomatically(): void {
     const now = new Date();
+    const commentStore = useCommentStore();
     
     players.value.forEach(player => {
+      const oldState = player.state;
       const daysSinceLastLogin = getDaysSince(player.lastLoginAt);
       
       // 超过 30 天未登录 → 流失
@@ -494,10 +512,8 @@ export const usePlayerStore = defineStore('player', () => {
         player.state = PlayerState.LOST;
         player.lostAt = now.toISOString();
         
-        // 生成退坑评论
-        if (commentStore) {
-          commentStore.generateLossComment(player);
-        }
+        // 生成退坑评论 (1-3条)
+        commentStore.generateQuitComments(player.id);
       }
       
       // 流失玩家超过 60 天 → 30% 概率回归
@@ -510,12 +526,15 @@ export const usePlayerStore = defineStore('player', () => {
             player.state = PlayerState.RETURNED;
             player.returnedAt = now.toISOString();
             
-            // 生成真香评论
-            if (commentStore) {
-              commentStore.generateReturnComment(player);
-            }
+            // 生成真香评论 (1-2条)
+            commentStore.generateReturnComments(player.id);
           }
         }
+      }
+      
+      // 付费玩家 30% 概率生成安利评论
+      if (player.state === PlayerState.PAYING && Math.random() < 0.3) {
+        commentStore.generateRecommendationComments(player.id);
       }
     });
     
@@ -525,15 +544,15 @@ export const usePlayerStore = defineStore('player', () => {
   /**
    * 启动玩家状态定时器（每小时执行一次）
    */
-  function startPlayerStateTimer(commentStore: any): void {
+  function startPlayerStateTimer(): void {
     // 每小时执行一次
     setInterval(() => {
-      updatePlayerStatesAutomatically(commentStore);
+      updatePlayerStatesAutomatically();
     }, 3600000); // 3600000ms = 1小时
     
     // 为了测试，也可以设置为每分钟执行一次
     // setInterval(() => {
-    //   updatePlayerStatesAutomatically(commentStore);
+    //   updatePlayerStatesAutomatically();
     // }, 60000); // 60000ms = 1分钟
   }
 

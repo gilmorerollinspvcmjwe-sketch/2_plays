@@ -1,5 +1,16 @@
 <template>
   <div class="plot-tree-editor">
+    <!-- 顶部导航栏 -->
+    <div class="header">
+      <div class="header-left">
+        <van-button icon="arrow-left" size="small" plain @click="goBack">返回</van-button>
+      </div>
+      <div class="header-title">剧情树编辑器</div>
+      <div class="header-right">
+        <van-button icon="checked" size="small" type="primary" @click="saveAndReturn">保存并返回</van-button>
+      </div>
+    </div>
+    
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-section">
@@ -82,6 +93,8 @@
           :class="[node.type, { selected: selectedNode?.id === node.id }]"
           :style="getNodeStyle(node)"
           @mousedown.stop="handleNodeMouseDown($event, node)"
+          @mousemove.stop="handleNodeMouseMove($event, node)"
+          @mouseup.stop="handleNodeMouseUp($event, node)"
           @click.stop="selectNode(node)"
         >
           <div class="node-header">
@@ -111,11 +124,12 @@
         ></textarea>
       </div>
       <div class="property-group" v-if="selectedNode.type === 'choice'">
-        <label>选项设置</label>
+        <label>选项设置 ({{ selectedNode.connections.length }}个选项)</label>
         <div v-for="(conn, idx) in selectedNode.connections" :key="idx" class="choice-option">
           <input
-            v-model="conn.label"
+            :value="'选项' + (idx + 1) + ': ' + conn"
             placeholder="选项文字"
+            readonly
           />
         </div>
         <button class="add-option-btn" @click="addChoiceOption">
@@ -169,17 +183,28 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue';
+import { ref, computed, onMounted, reactive, watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { useRouter as useVanillaRouter } from 'vue-router';
 import type { PlotBranch, PlotNode, PlotNodeType } from '@/types/plotBranch';
 import { initPlotBranch, analyzePlotQuality } from '@/types/plotBranch';
-import { showToast } from 'vant';
+import { showToast, showDialog } from 'vant';
+import { useGameStore } from '@/stores/gameStore';
+import { storeToRefs } from 'pinia';
+
+const route = useRoute();
+const vanRouter = useVanillaRouter();
+const gameStore = useGameStore();
+const { currentGame } = storeToRefs(gameStore);
 
 const props = defineProps<{
   initialPlot?: PlotBranch;
+  plotId?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'save', plot: PlotBranch): void;
+  (e: 'back'): void;
 }>();
 
 // 剧情数据
@@ -199,6 +224,7 @@ const showQualityReport = ref(true);
 
 // 节点类型配置
 const nodeTypes = [
+  { value: 'start' as PlotNodeType, label: '开始', icon: 'play-circle-o' },
   { value: 'dialogue' as PlotNodeType, label: '对话', icon: 'chat-o' },
   { value: 'choice' as PlotNodeType, label: '选择', icon: 'question-o' },
   { value: 'condition' as PlotNodeType, label: '条件', icon: 'filter-o' },
@@ -303,7 +329,7 @@ function addNode(type: PlotNodeType) {
   const newNode: PlotNode = {
     id: `node_${Date.now()}`,
     type,
-    content: '',
+    content: type === 'start' ? '剧情开始' : '',
     position: {
       x: 300 + Math.random() * 100,
       y: 200 + Math.random() * 100
@@ -391,19 +417,25 @@ function handleCanvasMouseDown(event: MouseEvent) {
     isConnecting.value = false;
     connectionStart.value = null;
   } else {
+    // 开始拖拽画布
     isDragging.value = true;
     mousePos.value = { x: event.clientX, y: event.clientY };
   }
 }
 
 function handleCanvasMouseMove(event: MouseEvent) {
+  const dx = event.clientX - mousePos.value.x;
+  const dy = event.clientY - mousePos.value.y;
+  
   if (isDragging.value && dragNode.value) {
-    const dx = (event.clientX - mousePos.value.x) / scale.value;
-    const dy = (event.clientY - mousePos.value.y) / scale.value;
-    
-    dragNode.value.position.x += dx;
-    dragNode.value.position.y += dy;
-    
+    // 拖拽节点
+    dragNode.value.position.x += dx / scale.value;
+    dragNode.value.position.y += dy / scale.value;
+    mousePos.value = { x: event.clientX, y: event.clientY };
+  } else if (isDragging.value && !dragNode.value) {
+    // 拖拽画布
+    offset.value.x += dx;
+    offset.value.y += dy;
     mousePos.value = { x: event.clientX, y: event.clientY };
   }
 }
@@ -415,10 +447,46 @@ function handleCanvasMouseUp() {
 
 // 节点鼠标事件
 function handleNodeMouseDown(event: MouseEvent, node: PlotNode) {
+  event.stopPropagation();
   dragNode.value = node;
   selectedNode.value = node;
   mousePos.value = { x: event.clientX, y: event.clientY };
   isDragging.value = true;
+}
+
+// 节点鼠标移动
+function handleNodeMouseMove(event: MouseEvent, node: PlotNode) {
+  if (isConnecting.value && connectionStart.value) {
+    // 正在创建连接，可以显示临时连线
+  }
+}
+
+// 节点鼠标松开
+function handleNodeMouseUp(event: MouseEvent, targetNode: PlotNode) {
+  event.stopPropagation();
+  if (isConnecting.value && connectionStart.value) {
+    const startNode = connectionStart.value.node;
+    const portType = connectionStart.value.type;
+    
+    // 不能连接到自己
+    if (startNode.id === targetNode.id) {
+      isConnecting.value = false;
+      connectionStart.value = null;
+      return;
+    }
+    
+    // 如果是从输出端口开始连接
+    if (portType === 'output') {
+      // 检查是否已存在连接
+      if (!startNode.connections.includes(targetNode.id)) {
+        startNode.connections.push(targetNode.id);
+      }
+    }
+    
+    isConnecting.value = false;
+    connectionStart.value = null;
+    showToast('连接已创建');
+  }
 }
 
 // 滚轮缩放
@@ -430,12 +498,203 @@ function handleWheel(event: WheelEvent) {
 
 // 保存
 function savePlot() {
+  if (!currentGame.value) {
+    showToast('请先选择游戏');
+    return;
+  }
+
+  // 计算质量评分（节点数量奖励）
+  let qualityBonus = 1.0;
+  let achievementUnlocked = false;
+  if (plot.nodes.length > 10) {
+    qualityBonus = 1.1; // +10%
+    achievementUnlocked = true;
+    showToast('🎉 剧情大师：复杂剧情质量+10%');
+  }
+
+  // 更新剧情数据到 gameStore
+  const plotIndex = currentGame.value.plots.findIndex(p => p.id === plot.id);
+  if (plotIndex !== -1) {
+    // 更新现有剧情
+    const game = currentGame.value;
+    const existingPlot = game.plots[plotIndex];
+    const updatedPlot = {
+      ...existingPlot,
+      chapters: convertPlotToChapters(plot)
+    };
+    // 添加扩展属性
+    (updatedPlot as any).quality = ((existingPlot as any).quality || 1.0) * qualityBonus;
+    (updatedPlot as any).nodeCount = plot.nodes.length;
+    (updatedPlot as any).complexity = plot.nodes.length > 10 ? 'complex' : plot.nodes.length > 5 ? 'medium' : 'simple';
+    game.plots[plotIndex] = updatedPlot;
+    gameStore.saveToLocal();
+    showToast('剧情已保存');
+  } else {
+    // 创建新剧情
+    const newPlot: any = {
+      id: plot.id,
+      title: plot.name,
+      summary: plot.description,
+      routeType: 'sweet' as const,
+      difficulty: plot.nodes.length > 10 ? 'complex' : plot.nodes.length > 5 ? 'medium' : 'simple',
+      chapters: convertPlotToChapters(plot),
+      characterIds: [],
+      createdAt: new Date().toISOString()
+    };
+    // 添加扩展属性
+    newPlot.quality = qualityBonus;
+    newPlot.nodeCount = plot.nodes.length;
+    gameStore.addPlot(newPlot);
+    showToast(achievementUnlocked ? '剧情已创建！解锁剧情大师成就' : '剧情已创建');
+  }
+
   emit('save', plot);
-  showToast('剧情已保存');
+}
+
+// 将 PlotBranch 转换为 Chapter 数组
+function convertPlotToChapters(plotBranch: PlotBranch) {
+  const chapters: any[] = [];
+  const sortedNodes = sortNodesByPosition(plotBranch.nodes);
+  
+  sortedNodes.forEach((node, index) => {
+    const chapter: any = {
+      chapter: index + 1,
+      title: `${getNodeTypeLabel(node.type)} - ${index + 1}`,
+      scene: node.content,
+      keyEvent: node.type === 'choice' ? '玩家选择' : node.type === 'ending' ? '结局' : '剧情推进',
+      choices: [],
+      selectedChoice: 0
+    };
+    
+    if (node.type === 'choice' && node.connections.length > 0) {
+      chapter.choices = node.connections.map((_, idx) => `选项${idx + 1}`);
+    }
+    
+    chapters.push(chapter);
+  });
+  
+  return chapters;
+}
+
+// 按位置排序节点（简单的从上到下，从左到右排序）
+function sortNodesByPosition(nodes: PlotNode[]): PlotNode[] {
+  return [...nodes].sort((a, b) => {
+    if (a.position.y !== b.position.y) {
+      return a.position.y - b.position.y;
+    }
+    return a.position.x - b.position.x;
+  });
+}
+
+// 返回
+function goBack() {
+  const returnTo = route.query.returnTo as string;
+  if (returnTo) {
+    // 如果是从其他页面跳转过来的，返回原页面
+    vanRouter.push(returnTo);
+  } else {
+    emit('back');
+    vanRouter.back();
+  }
+}
+
+// 保存并返回
+function saveAndReturn() {
+  savePlot();
+  const returnTo = route.query.returnTo as string;
+  if (returnTo) {
+    // 检查是否是通过 window.open 打开的新窗口
+    if (window.opener) {
+      window.close();
+    } else {
+      vanRouter.push(returnTo);
+    }
+  } else {
+    emit('back');
+    vanRouter.back();
+  }
+}
+
+// 加载现有剧情
+function loadPlot(plotId: string) {
+  if (!currentGame.value) return;
+
+  const plotData = currentGame.value.plots.find(p => p.id === plotId);
+  if (plotData) {
+    // 将 Chapter 数据转换回 PlotBranch
+    const convertedPlot = convertChaptersToPlot(plotData);
+    Object.assign(plot, convertedPlot);
+  }
+}
+
+// 根据项目ID加载剧情
+function loadProjectPlots(projectId: string) {
+  if (!currentGame.value) return;
+
+  // 查找项目中关联的剧情（使用类型断言访问扩展属性）
+  const projectPlot = currentGame.value.plots.find(p => (p as any).projectId === projectId);
+  if (projectPlot) {
+    const convertedPlot = convertChaptersToPlot(projectPlot);
+    Object.assign(plot, convertedPlot);
+    showToast('已加载项目关联的剧情');
+  } else {
+    // 创建新剧情，关联到项目
+    plot.name = '新剧情';
+    showToast('为项目创建新剧情');
+  }
+}
+
+// 将 Chapter 转换为 PlotBranch
+function convertChaptersToPlot(plotData: any): PlotBranch {
+  const plotBranch = initPlotBranch();
+  plotBranch.id = plotData.id;
+  plotBranch.name = plotData.title;
+  plotBranch.description = plotData.summary;
+
+  // 根据章节创建节点
+  if (plotData.chapters && plotData.chapters.length > 0) {
+    plotData.chapters.forEach((chapter: any, index: number) => {
+      let nodeType: PlotNodeType = 'dialogue';
+      if (index === 0) nodeType = 'start';
+      if (chapter.choices && chapter.choices.length > 0) nodeType = 'choice';
+      if (chapter.keyEvent === '结局') nodeType = 'ending';
+
+      plotBranch.nodes.push({
+        id: `node_${index}`,
+        type: nodeType,
+        content: chapter.scene,
+        position: {
+          x: 400,
+          y: 50 + index * 150
+        },
+        connections: [],
+        emotion: 0
+      });
+    });
+
+    // 连接节点
+    for (let i = 0; i < plotBranch.nodes.length - 1; i++) {
+      plotBranch.nodes[i].connections.push(plotBranch.nodes[i + 1].id);
+    }
+  }
+
+  return plotBranch;
 }
 
 onMounted(() => {
-  // 初始化
+  // 如果有 plotId 参数，加载现有剧情
+  const plotId = props.plotId || (route.query.plotId as string);
+  if (plotId) {
+    loadPlot(plotId);
+  }
+
+  // 解析 projectId 和 returnTo 参数
+  const projectId = route.query.projectId as string;
+  const returnTo = route.query.returnTo as string;
+
+  if (projectId) {
+    loadProjectPlots(projectId);
+  }
 });
 </script>
 
@@ -445,6 +704,32 @@ onMounted(() => {
   flex-direction: column;
   height: 100vh;
   background: #f5f5f5;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: white;
+  border-bottom: 1px solid #e8e8e8;
+  
+  .header-left,
+  .header-right {
+    flex: 1;
+  }
+  
+  .header-right {
+    display: flex;
+    justify-content: flex-end;
+  }
+  
+  .header-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #333;
+    text-align: center;
+  }
 }
 
 .toolbar {
@@ -613,12 +898,12 @@ onMounted(() => {
     box-shadow: 0 0 0 3px rgba(255, 105, 180, 0.2);
   }
   
-  &.start { border-color: #52c41a; }
-  &.dialogue { border-color: #1890ff; }
-  &.choice { border-color: #faad14; }
-  &.condition { border-color: #722ed1; }
-  &.event { border-color: #52c41a; }
-  &.ending { border-color: #ff4d4f; }
+  &.start { border-color: #52c41a; background: #f6ffed; }
+  &.dialogue { border-color: #1890ff; background: #e6f7ff; }
+  &.choice { border-color: #faad14; background: #fffbe6; }
+  &.condition { border-color: #722ed1; background: #f9f0ff; }
+  &.event { border-color: #52c41a; background: #f6ffed; }
+  &.ending { border-color: #ff4d4f; background: #fff1f0; }
   
   .node-header {
     display: flex;

@@ -64,7 +64,11 @@ const router = createRouter({
         {
           path: 'company-setup',
           name: 'companySetup',
-          component: () => import('@/views/CompanySetupView.vue')
+          component: () => import('@/views/CompanySetupView.vue'),
+          meta: { 
+            requiresNoCompany: true,
+            title: '创建公司'
+          }
         },
         {
           path: 'game/:id',
@@ -139,10 +143,31 @@ const router = createRouter({
           name: 'marketDashboard',
           component: () => import('@/views/market/MarketDashboardView.vue'),
           meta: { title: '市场情报' }
+        },
+        {
+          path: 'admin',
+          name: 'admin',
+          component: () => import('@/views/AdminView.vue'),
+          meta: { title: '玩家社区分析' }
         }
       ]
     }
   ]
 })
+
+// 路由守卫
+router.beforeEach((to, from, next) => {
+  // 动态导入 store
+  import('@/stores/companyStore').then(({ useCompanyStore }) => {
+    const companyStore = useCompanyStore();
+    
+    // 如果路由需要无公司状态但用户已有公司
+    if (to.meta.requiresNoCompany && companyStore.hasCompany) {
+      next('/home');  // 重定向到首页
+    } else {
+      next();
+    }
+  });
+});
 
 export default router

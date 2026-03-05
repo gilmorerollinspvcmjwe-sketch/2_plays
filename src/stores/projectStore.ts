@@ -26,6 +26,8 @@ import {
   getProjectStatusName
 } from '@/types/project';
 import type { Character, Plot } from '@/stores/gameStore';
+import { useGameStore } from './gameStore';
+import { calculateProjectQuality, type ProjectQualityScore } from '@/engine/qualityScoring';
 
 export const useProjectStore = defineStore('project', () => {
   // State
@@ -574,6 +576,26 @@ export const useProjectStore = defineStore('project', () => {
     simulateDailyOperation,
     saveToLocal,
     loadFromLocal,
-    initDefaultProject
+    initDefaultProject,
+    
+    // 质量评分
+    getProjectQuality: (projectId: string): ProjectQualityScore | null => {
+      const project = projects.value.find(p => p.id === projectId);
+      if (!project) return null;
+      
+      const gameStore = useGameStore();
+      
+      // 获取项目关联的角色
+      const projectChars = project.characters?.map(charId => 
+        gameStore.characters.find(c => c.id === charId)
+      ).filter(Boolean) || [];
+      
+      // 获取项目关联的剧情
+      const projectPlots = project.plots?.map(plotId => 
+        gameStore.plots.find(p => p.id === plotId)
+      ).filter(Boolean) || [];
+      
+      return calculateProjectQuality(projectChars, projectPlots);
+    }
   };
 });

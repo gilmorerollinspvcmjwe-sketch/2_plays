@@ -16,6 +16,77 @@
     <van-tabs v-model="activeTab" class="operation-tabs">
       <van-tab title="卡池管理">
         <div class="tab-content">
+          <!-- 角色人气排行 -->
+          <div class="popularity-ranking-card">
+            <div class="ranking-header">
+              <span class="ranking-title">🔥 角色人气排行 (Top10)</span>
+              <van-button
+                type="primary"
+                size="mini"
+                round
+                color="linear-gradient(to right, #FF69B4, #FFB6C1)"
+                @click="refreshPopularityRanking"
+              >
+                刷新
+              </van-button>
+            </div>
+            <div class="ranking-list">
+              <div
+                v-for="(char, index) in popularityRanking"
+                :key="char.characterId"
+                class="ranking-item"
+                :class="{ 'is-up': char.isInPool, 'is-recommended': !char.isInPool && char.popularity >= 60 }"
+                @click="handleCharacterClick(char)"
+              >
+                <span class="rank-number" :class="`rank-${index + 1}`">{{ index + 1 }}</span>
+                <span class="char-name">{{ char.name }}</span>
+                <div class="popularity-bar">
+                  <div
+                    class="popularity-fill"
+                    :style="{ width: char.popularity + '%', background: getPopularityColor(char.popularity) }"
+                  />
+                </div>
+                <span class="popularity-value">{{ char.popularity }}</span>
+                <van-tag
+                  v-if="char.isInPool"
+                  type="success"
+                  size="mini"
+                  class="status-tag"
+                >
+                  UP中
+                </van-tag>
+                <van-tag
+                  v-else-if="char.popularity >= 60"
+                  type="warning"
+                  size="mini"
+                  class="status-tag"
+                >
+                  建议UP
+                </van-tag>
+              </div>
+            </div>
+          </div>
+
+          <!-- 建议UP角色 -->
+          <div v-if="recommendedUpCharacters.length > 0" class="recommended-section">
+            <div class="section-header">
+              <span class="section-title">💡 建议UP角色</span>
+              <span class="section-desc">人气高但未UP，点击可直接创建卡池</span>
+            </div>
+            <div class="recommended-list">
+              <van-tag
+                v-for="char in recommendedUpCharacters"
+                :key="char.characterId"
+                type="warning"
+                size="medium"
+                class="recommended-tag"
+                @click="createPoolForCharacter(char)"
+              >
+                {{ char.name }} ({{ char.popularity }})
+              </van-tag>
+            </div>
+          </div>
+
           <div v-if="operationStore.gachaPools.length === 0" class="empty-state">
             <van-empty description="暂无卡池">
               <van-button
@@ -42,6 +113,13 @@
                   {{ getStatusLabel(pool.status) }}
                 </van-tag>
                 <van-tag plain>SSR {{ pool.rates.ssr }}%</van-tag>
+                <van-tag
+                  v-if="pool.popularityBonus && pool.popularityBonus !== 1"
+                  :type="pool.popularityBonus > 1 ? 'success' : 'danger'"
+                  class="popularity-bonus-tag"
+                >
+                  人气{{ pool.popularityBonus > 1 ? '+' : '' }}{{ Math.round((pool.popularityBonus - 1) * 100) }}%
+                </van-tag>
               </template>
               <template #footer>
                 <span class="pool-stats">抽卡：{{ pool.totalDraws }} | 收入：{{ pool.revenue }}</span>
@@ -348,6 +426,62 @@
           <MarketDashboard />
         </div>
       </van-tab>
+
+      <van-tab title="效果追踪">
+        <div class="tab-content">
+          <div v-if="predictionComparisons.length === 0" class="empty-state">
+            <van-empty description="暂无效果追踪数据">
+              <p class="empty-hint">创建卡池或活动后可查看预测与实际效果对比</p>
+            </van-empty>
+          </div>
+          <div v-else class="prediction-comparison-list">
+            <div 
+              v-for="(comparison, index) in predictionComparisons" 
+              :key="index"
+              class="comparison-card"
+            >
+              <div class="comparison-header">
+                <span class="comparison-metric">{{ getMetricLabel(comparison.metric) }}</span>
+                <van-tag :type="comparison.accuracy >= 0.8 ? 'success' : comparison.accuracy >= 0.5 ? 'warning' : 'danger'">
+                  准确率 {{ (comparison.accuracy * 100).toFixed(0) }}%
+                </van-tag>
+              </div>
+              <div class="comparison-values">
+                <div class="value-item predicted">
+                  <span class="value-label">预测</span>
+                  <span class="value-num" :class="comparison.predicted >= 0 ? 'positive' : 'negative'">
+                    {{ comparison.predicted >= 0 ? '+' : '' }}{{ comparison.predicted.toFixed(1) }}
+                  </span>
+                </div>
+                <div class="value-divider">→</div>
+                <div class="value-item actual">
+                  <span class="value-label">实际</span>
+                  <span class="value-num" :class="comparison.actual >= 0 ? 'positive' : 'negative'">
+                    {{ comparison.actual >= 0 ? '+' : '' }}{{ comparison.actual.toFixed(1) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 追踪统计 -->
+          <div v-if="predictionComparisons.length > 0" class="tracking-stats">
+            <div class="stats-header">
+              <span class="stats-title">追踪统计</span>
+            </div>
+            <div class="stats-grid">
+              <div class="stat-item">
+                <div class="stat-value">{{ predictionComparisons.length }}</div>
+                <div class="stat-label">追踪指标</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">{{ averageAccuracy.toFixed(0) }}%</div>
+                <div class="stat-label">平均准确率</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </van-tab>
     </van-tabs>
 
     <!-- 创建卡池弹窗 -->
@@ -378,6 +512,23 @@
           <van-radio name="中">中</van-radio>
           <van-radio name="高">高</van-radio>
         </van-radio-group>
+      </div>
+      <!-- 查看效果预测按钮 -->
+      <div class="form-item prediction-button-wrapper">
+        <van-button 
+          type="primary" 
+          size="small" 
+          round
+          block
+          color="linear-gradient(to right, #667eea, #764ba2)"
+          @click="handlePreviewPrediction"
+          :disabled="!poolForm.name"
+        >
+          <template #icon>
+            <van-icon name="chart-trending-o" />
+          </template>
+          查看效果预测
+        </van-button>
       </div>
     </van-dialog>
 
@@ -438,6 +589,36 @@
       </div>
     </van-popup>
 
+    <!-- 危机警报组件 -->
+    <CrisisAlert
+      :crises="crises"
+      @resolve="handleResolveCrisis"
+    />
+
+    <!-- 效果预测面板弹窗 -->
+    <van-popup
+      v-model:show="showPredictionPanel"
+      position="bottom"
+      round
+      :style="{ height: '85%' }"
+    >
+      <div class="prediction-popup">
+        <div class="prediction-header">
+          <h3>🔮 效果预测</h3>
+          <van-icon name="cross" size="20" @click="showPredictionPanel = false" />
+        </div>
+        <div class="prediction-content">
+          <OperationPredictionPanel
+            v-if="currentPrediction"
+            :decision="currentDecision"
+            :prediction="currentPrediction"
+            @confirm="handleConfirmPrediction"
+            @adjust="handleAdjustPrediction"
+          />
+        </div>
+      </div>
+    </van-popup>
+
     <!-- 处理事件弹窗 -->
     <van-dialog
       v-model:show="showHandleIncident"
@@ -489,12 +670,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue';
+import { useRoute } from 'vue-router';
 import { useOperationStore } from '@/stores/operationStore';
 import { useCommentStore } from '@/stores/commentStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useSimulationStore } from '@/stores/simulationStore';
-import { showToast } from 'vant';
+import { useGameStore } from '@/stores/gameStore';
+import { showToast, showSuccessToast, showDialog } from 'vant';
 import OperationDashboard from '@/components/operation/OperationDashboard.vue';
 import EventTemplateSelector from '@/components/operation/EventTemplateSelector.vue';
 import IncidentHandler from '@/components/operation/IncidentHandler.vue';
@@ -502,12 +685,89 @@ import GachaSimulator from '@/components/gacha/GachaSimulator.vue';
 import ConfessionWall from '@/components/social/ConfessionWall.vue';
 import FanCreationSquare from '@/components/social/FanCreationSquare.vue';
 import MarketDashboard from '@/components/market/MarketDashboard.vue';
+import CrisisAlert from '@/components/crisis/CrisisAlert.vue';
+import OperationPredictionPanel from '@/components/operation/OperationPredictionPanel.vue';
+import type { Crisis, CrisisResolution } from '@/types/crisis';
+import type { OperationDecision, OperationPrediction } from '@/stores/operationStore';
+
+const route = useRoute();
 
 const operationStore = useOperationStore();
 const commentStore = useCommentStore();
 const playerStore = usePlayerStore();
 const simulationStore = useSimulationStore();
+const gameStore = useGameStore();
 const activeTab = ref(0);
+
+// 角色人气排行数据
+const popularityRanking = computed(() => operationStore.getCharacterPopularityRanking(10));
+const recommendedUpCharacters = computed(() => operationStore.getRecommendedUpCharacters());
+
+// 获取人气颜色
+function getPopularityColor(popularity: number): string {
+  if (popularity >= 80) return '#52c41a'; // 绿色 - 高人气
+  if (popularity >= 60) return '#1890ff'; // 蓝色 - 较高人气
+  if (popularity >= 40) return '#faad14'; // 橙色 - 一般人气
+  return '#ff4d4f'; // 红色 - 低人气
+}
+
+// 刷新人气排行
+function refreshPopularityRanking() {
+  showToast('人气排行已刷新');
+}
+
+// 处理角色点击
+async function handleCharacterClick(char: { characterId: string; name: string; popularity: number; isInPool: boolean }) {
+  if (char.isInPool) {
+    showToast(`${char.name} 正在UP中`);
+  } else if (char.popularity >= 60) {
+    // 建议UP的角色，询问是否创建卡池
+    showDialog({
+      title: '创建UP卡池',
+      message: `${char.name} 当前人气 ${char.popularity}，建议创建UP卡池可获得收益加成！`,
+      showCancelButton: true,
+      confirmButtonText: '创建卡池',
+      cancelButtonText: '取消'
+    }).then(() => {
+      createPoolForCharacter(char);
+    }).catch(() => {
+      // 取消
+    });
+  } else {
+    showToast(`${char.name} 当前人气 ${char.popularity}`);
+  }
+}
+
+// 为指定角色创建卡池
+async function createPoolForCharacter(char: { characterId: string; name: string; popularity: number }) {
+  // 计算人气加成提示
+  let bonusText = '';
+  if (char.popularity >= 80) {
+    bonusText = '人气加成: +50%';
+  } else if (char.popularity >= 60) {
+    bonusText = '人气加成: +20%';
+  } else if (char.popularity < 40) {
+    bonusText = '人气惩罚: -20%';
+  }
+
+  const result = await operationStore.createGachaPool({
+    name: `${char.name} UP池`,
+    upCharacters: [char.characterId],
+    rates: { ssr: 2, sr: 8, r: 90 },
+    budget: '中',
+    startTime: new Date().toISOString(),
+    endTime: new Date(Date.now() + 7 * 86400000).toISOString()
+  });
+
+  if (result.success) {
+    showSuccessToast(`${char.name} UP卡池创建成功！${bonusText}`);
+  } else {
+    showToast(result.message);
+  }
+}
+
+// 危机数据
+const crises = ref<Crisis[]>([]);
 
 // 自动结算
 const autoSettleEnabled = ref(false);
@@ -540,8 +800,32 @@ const showCreateEvent = ref(false);
 const showHandleIncident = ref(false);
 const showTemplateSelector = ref(false);
 const showGachaSimulator = ref(false);
+const showPredictionPanel = ref(false);
 const selectedIncident = ref<{ id: string } | null>(null);
 const selectedSolution = ref<{ action: string; cost: string; effect: string } | null>(null);
+
+// 预测相关
+const currentDecision = ref<OperationDecision>({
+  id: '',
+  type: 'gacha',
+  name: '',
+  params: {},
+  timestamp: Date.now()
+});
+const currentPrediction = ref<OperationPrediction | null>(null);
+const predictionComparisons = ref<{
+  metric: string;
+  predicted: number;
+  actual: number;
+  accuracy: number;
+}[]>([]);
+
+// 平均准确率
+const averageAccuracy = computed(() => {
+  if (predictionComparisons.value.length === 0) return 0;
+  const sum = predictionComparisons.value.reduce((acc, curr) => acc + curr.accuracy, 0);
+  return (sum / predictionComparisons.value.length) * 100;
+});
 
 // 表单数据
 const poolForm = ref({
@@ -581,6 +865,22 @@ function getStatusType(status: string): string {
   return map[status] || 'default';
 }
 
+// 指标标签
+function getMetricLabel(metric: string): string {
+  const labels: Record<string, string> = {
+    'satisfaction': '玩家满意度',
+    'dailyRevenue': '日收入',
+    'retention': '留存率',
+    'marketShare': '市场份额',
+    'reputation': '声誉',
+    'negativeSentiment': '负面情绪',
+    'incident_trigger': '事件触发',
+    'activePlayers': '活跃玩家',
+    'totalDraws': '抽卡次数'
+  };
+  return labels[metric] || metric;
+}
+
 function getStatusLabel(status: string): string {
   const map: Record<string, string> = {
     ongoing: '进行中',
@@ -615,6 +915,57 @@ function getSentimentClass(sentiment: number): string {
   return 'neutral';
 }
 
+// 查看效果预测
+function handlePreviewPrediction() {
+  if (!poolForm.value.name) {
+    showToast('请先填写卡池名称');
+    return;
+  }
+
+  // 创建决策对象
+  const decision: OperationDecision = {
+    id: `preview_${Date.now()}`,
+    type: 'gacha',
+    name: poolForm.value.name,
+    description: `UP角色: ${poolForm.value.upCharacters}`,
+    params: {
+      action: 'rate_change',
+      value: poolForm.value.rates.ssr,
+      newRate: poolForm.value.rates.ssr,
+      oldRate: 2,
+      upCharacterPopularity: 50,
+      budget: poolForm.value.budget
+    },
+    timestamp: Date.now()
+  };
+
+  currentDecision.value = decision;
+  currentPrediction.value = operationStore.generatePrediction(decision);
+  showPredictionPanel.value = true;
+}
+
+// 确认预测并创建
+async function handleConfirmPrediction() {
+  showPredictionPanel.value = false;
+  await handleCreatePool();
+}
+
+// 调整预测参数
+function handleAdjustPrediction(adjustments: { intensity: number; marketSensitivity: number }) {
+  // 重新生成预测，应用调整系数
+  if (currentDecision.value) {
+    const adjustedDecision = {
+      ...currentDecision.value,
+      params: {
+        ...currentDecision.value.params,
+        intensityMultiplier: adjustments.intensity,
+        marketSensitivity: adjustments.marketSensitivity
+      }
+    };
+    currentPrediction.value = operationStore.generatePrediction(adjustedDecision);
+  }
+}
+
 // 创建卡池
 async function handleCreatePool() {
   if (!poolForm.value.name || !poolForm.value.upCharacters) {
@@ -635,9 +986,61 @@ async function handleCreatePool() {
     showToast(result.message);
     showCreatePool.value = false;
     resetPoolForm();
+    
+    // 如果有预测，追踪实际效果
+    if (currentDecision.value.id) {
+      setTimeout(() => {
+        operationStore.trackActualEffects(currentDecision.value.id);
+        loadPredictionComparisons();
+      }, 1000);
+    }
   } else {
     showToast(result.message);
   }
+}
+
+// 加载预测对比数据
+function loadPredictionComparisons() {
+  // 获取最近的预测对比数据
+  const comparisons: { metric: string; predicted: number; actual: number; accuracy: number }[] = [];
+  
+  // 从 store 获取所有追踪的效果
+  const trackedEffects = operationStore.trackedEffects || [];
+  
+  // 按指标分组计算平均准确率
+  const metricMap = new Map<string, { predicted: number; actual: number; count: number }>();
+  
+  trackedEffects.forEach(effect => {
+    const existing = metricMap.get(effect.metric);
+    if (existing) {
+      existing.predicted += effect.predictedChange;
+      existing.actual += effect.actualChange;
+      existing.count += 1;
+    } else {
+      metricMap.set(effect.metric, {
+        predicted: effect.predictedChange,
+        actual: effect.actualChange,
+        count: 1
+      });
+    }
+  });
+  
+  metricMap.forEach((data, metric) => {
+    const avgPredicted = data.predicted / data.count;
+    const avgActual = data.actual / data.count;
+    const accuracy = avgPredicted !== 0 
+      ? 1 - Math.abs((avgActual - avgPredicted) / avgPredicted)
+      : 1;
+    
+    comparisons.push({
+      metric,
+      predicted: avgPredicted,
+      actual: avgActual,
+      accuracy: Math.max(0, Math.min(1, accuracy))
+    });
+  });
+  
+  predictionComparisons.value = comparisons;
 }
 
 // 创建活动
@@ -901,7 +1304,114 @@ function resetEventForm() {
 // 初始化
 onMounted(() => {
   operationStore.initDefaultData();
+  operationStore.loadTrackedEffects();
+  loadPredictionComparisons();
+
+  // 初始化危机数据（模拟）
+  crises.value = [
+    {
+      id: '1',
+      type: 'server',
+      level: 'moderate',
+      title: '服务器波动',
+      description: '部分玩家反映登录困难',
+      status: 'pending',
+      heat: 65,
+      sentiment: -0.3,
+      affectedUsers: 1200,
+      options: [
+        { id: '1', text: '紧急修复', cost: 100, successRate: 0.8 },
+        { id: '2', text: '发布补偿公告', cost: 50, successRate: 0.6 }
+      ]
+    }
+  ];
+
+  // 解析URL参数并预填充表单
+  handleUrlParams();
 });
+
+// 处理URL参数
+function handleUrlParams() {
+  const action = route.query.action as string | undefined;
+  const templateStr = route.query.template as string | undefined;
+
+  if (!action || !templateStr) return;
+
+  try {
+    const template = JSON.parse(templateStr);
+
+    switch (action) {
+      case 'welfare':
+        // 切换到福利发放tab
+        activeTab.value = 4; // 福利发放tab的索引
+        // 预填充福利表单
+        if (template.description) {
+          welfareForm.value.content = template.description;
+        }
+        // 如果有钻石或抽卡券信息，添加到描述中
+        if (template.diamonds || template.tickets) {
+          const rewards = [];
+          if (template.diamonds) rewards.push(`钻石x${template.diamonds}`);
+          if (template.tickets) rewards.push(`抽卡券x${template.tickets}`);
+          welfareForm.value.content = `${template.description || '福利发放'}: ${rewards.join(', ')}`;
+        }
+        showToast(`已预填充${template.type === 'batch_recall' ? '批量召回' : '福利'}配置，请确认后发放`);
+        break;
+
+      case 'event':
+        // 切换到活动中心tab
+        activeTab.value = 1; // 活动中心tab的索引
+        // 预填充活动表单
+        if (template.type === 'vip_exclusive') {
+          eventForm.value.name = '付费玩家专属活动';
+          eventForm.value.description = template.description || '为付费玩家准备的专属福利活动';
+          eventForm.value.type = 'festival';
+          const rewards = [];
+          if (template.diamonds) rewards.push(`钻石x${template.diamonds}`);
+          if (template.tickets) rewards.push(`抽卡券x${template.tickets}`);
+          eventForm.value.rewards = rewards.length > 0 ? rewards : ['钻石x500', '抽卡券x10'];
+        }
+        // 打开创建活动弹窗
+        setTimeout(() => {
+          showCreateEvent.value = true;
+        }, 300);
+        showToast('已预填充活动配置，请确认后创建');
+        break;
+
+      case 'gacha':
+        // 切换到卡池管理tab
+        activeTab.value = 0; // 卡池管理tab的索引
+        showToast('已切换到卡池管理，请创建卡池');
+        break;
+
+      default:
+        break;
+    }
+  } catch (e) {
+    console.error('解析URL参数失败:', e);
+  }
+}
+
+// 处理危机解决
+function handleResolveCrisis(crisisId: string, resolution: CrisisResolution) {
+  const crisisIndex = crises.value.findIndex(c => c.id === crisisId);
+  if (crisisIndex === -1) return;
+  
+  // 模拟解决成功率
+  const success = Math.random() < resolution.successRate;
+  
+  if (success) {
+    crises.value[crisisIndex].status = 'resolved';
+    showSuccessToast('危机已成功解决！');
+    
+    // 3 秒后移除已解决的危机
+    setTimeout(() => {
+      crises.value = crises.value.filter(c => c.id !== crisisId);
+    }, 3000);
+  } else {
+    showToast('处理失败，请尝试其他方案');
+  }
+}
 
 // 清理
 onUnmounted(() => {
@@ -1217,6 +1727,167 @@ onUnmounted(() => {
     font-size: 12px;
     color: #999;
   }
+
+  .popularity-bonus-tag {
+    margin-left: 4px;
+  }
+}
+
+// 角色人气排行卡片
+.popularity-ranking-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  .ranking-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+
+    .ranking-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+    }
+  }
+
+  .ranking-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    .ranking-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #f5f5f5;
+      cursor: pointer;
+      transition: all 0.3s;
+
+      &:hover {
+        background: #e8e8e8;
+      }
+
+      &.is-up {
+        background: #f6ffed;
+        border: 1px solid #b7eb8f;
+      }
+
+      &.is-recommended {
+        background: #fffbe6;
+        border: 1px solid #ffe58f;
+      }
+
+      .rank-number {
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        font-size: 12px;
+        font-weight: bold;
+        color: #666;
+        background: #e0e0e0;
+
+        &.rank-1 {
+          background: #ffd700;
+          color: #fff;
+        }
+
+        &.rank-2 {
+          background: #c0c0c0;
+          color: #fff;
+        }
+
+        &.rank-3 {
+          background: #cd7f32;
+          color: #fff;
+        }
+      }
+
+      .char-name {
+        width: 80px;
+        font-size: 14px;
+        color: #333;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .popularity-bar {
+        flex: 1;
+        height: 8px;
+        background: #e0e0e0;
+        border-radius: 4px;
+        overflow: hidden;
+
+        .popularity-fill {
+          height: 100%;
+          border-radius: 4px;
+          transition: width 0.3s;
+        }
+      }
+
+      .popularity-value {
+        width: 32px;
+        text-align: right;
+        font-size: 12px;
+        color: #666;
+        font-weight: 500;
+      }
+
+      .status-tag {
+        margin-left: 4px;
+      }
+    }
+  }
+}
+
+// 建议UP角色区域
+.recommended-section {
+  background: linear-gradient(135deg, #fffbe6 0%, #fff7e6 100%);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid #ffe58f;
+
+  .section-header {
+    margin-bottom: 12px;
+
+    .section-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: #d48806;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .section-desc {
+      font-size: 12px;
+      color: #999;
+    }
+  }
+
+  .recommended-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    .recommended-tag {
+      cursor: pointer;
+      transition: all 0.3s;
+
+      &:hover {
+        transform: scale(1.05);
+      }
+    }
+  }
 }
 
 .event-list {
@@ -1492,6 +2163,167 @@ onUnmounted(() => {
     text-align: right;
     font-size: 11px;
     font-weight: bold;
+  }
+}
+
+// 预测按钮
+.prediction-button-wrapper {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #e0e0e0;
+}
+
+// 预测弹窗
+.prediction-popup {
+  background: white;
+  border-radius: 16px 16px 0 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .prediction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+
+    h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    .van-icon {
+      cursor: pointer;
+      padding: 4px;
+      transition: transform 0.2s;
+
+      &:active {
+        transform: scale(0.9);
+      }
+    }
+  }
+
+  .prediction-content {
+    flex: 1;
+    overflow-y: auto;
+  }
+}
+
+// 效果追踪对比
+.empty-hint {
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+}
+
+.prediction-comparison-list {
+  .comparison-card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+    .comparison-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+
+      .comparison-metric {
+        font-size: 14px;
+        font-weight: bold;
+        color: #333;
+      }
+    }
+
+    .comparison-values {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+
+      .value-item {
+        flex: 1;
+        text-align: center;
+        padding: 12px;
+        background: #f8f8f8;
+        border-radius: 8px;
+
+        .value-label {
+          display: block;
+          font-size: 12px;
+          color: #999;
+          margin-bottom: 4px;
+        }
+
+        .value-num {
+          font-size: 18px;
+          font-weight: bold;
+
+          &.positive {
+            color: #52c41a;
+          }
+
+          &.negative {
+            color: #ff4d4f;
+          }
+        }
+      }
+
+      .value-divider {
+        font-size: 20px;
+        color: #ccc;
+      }
+    }
+  }
+}
+
+// 追踪统计
+.tracking-stats {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  .stats-header {
+    margin-bottom: 16px;
+
+    .stats-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+    }
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+
+    .stat-item {
+      text-align: center;
+      padding: 16px;
+      background: #f8f8f8;
+      border-radius: 8px;
+
+      .stat-value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #667eea;
+        margin-bottom: 4px;
+      }
+
+      .stat-label {
+        font-size: 12px;
+        color: #999;
+      }
+    }
   }
 }
 </style>

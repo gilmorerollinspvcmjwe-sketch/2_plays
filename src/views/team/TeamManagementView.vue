@@ -7,6 +7,9 @@
       <div class="overview-card">
         <div class="overview-header">
           <span class="overview-title">团队概览</span>
+          <van-tag v-if="creatorStore.getSkillLevel('projectManagement') > 0" type="success" size="small">
+            效率+{{ creatorStore.getSkillLevel('projectManagement') * 5 }}%
+          </van-tag>
         </div>
         <div class="overview-stats">
           <div class="stat-item">
@@ -22,8 +25,8 @@
             <span class="stat-label">待分配</span>
           </div>
           <div class="stat-item">
-            <span class="stat-value">¥{{ formatNumber(employeeStore.totalSalary) }}</span>
-            <span class="stat-label">月支出</span>
+            <span class="stat-value">{{ teamEfficiency }}%</span>
+            <span class="stat-label">团队效率</span>
           </div>
         </div>
       </div>
@@ -236,6 +239,7 @@ import { useRouter } from 'vue-router';
 import { showToast, showDialog } from 'vant';
 import { useEmployeeStore } from '@/stores/employeeStore';
 import { useProjectStore } from '@/stores/projectStore';
+import { useCreatorGrowthStore, SKILL_EFFECTS } from '@/stores/creatorGrowth';
 import BackButton from '@/components/common/BackButton.vue';
 import type { Employee, EmployeePosition } from '@/types/employee';
 import {
@@ -252,6 +256,7 @@ import {
 const router = useRouter();
 const employeeStore = useEmployeeStore();
 const projectStore = useProjectStore();
+const creatorStore = useCreatorGrowthStore();
 
 const showEmployeeDetail = ref(false);
 const showAssignProject = ref(false);
@@ -261,6 +266,20 @@ const projectColumns = computed(() => {
   return projectStore.projects
     .filter(p => ['planning', 'developing'].includes(p.status))
     .map(p => ({ text: p.name, value: p.id }));
+});
+
+// 计算团队效率（应用项目管理技能加成）
+const teamEfficiency = computed(() => {
+  const pmLevel = creatorStore.getSkillLevel('projectManagement');
+  const baseEfficiency = 100;
+  const efficiencyBonus = SKILL_EFFECTS.projectManagement.teamEfficiencyBonus(pmLevel);
+  return Math.round(baseEfficiency * (1 + efficiencyBonus));
+});
+
+// 计算疲劳度减缓
+const fatigueReduction = computed(() => {
+  const pmLevel = creatorStore.getSkillLevel('projectManagement');
+  return SKILL_EFFECTS.projectManagement.fatigueReduction(pmLevel);
 });
 
 function getPositionIcon(position: EmployeePosition): string {
@@ -303,8 +322,17 @@ function goToRecruit() {
 }
 
 async function restAll() {
+  const pmLevel = creatorStore.getSkillLevel('projectManagement');
+  const fatigueReductionRate = SKILL_EFFECTS.projectManagement.fatigueReduction(pmLevel);
+
   const result = employeeStore.restAllAvailableEmployees();
-  showToast(result.message);
+
+  // 显示技能加成提示
+  if (pmLevel > 0) {
+    showToast(`项目管理Lv.${pmLevel}加成: 疲劳恢复+${Math.round(fatigueReductionRate * 100)}%`);
+  } else {
+    showToast(result.message);
+  }
 }
 
 function assignProject() {

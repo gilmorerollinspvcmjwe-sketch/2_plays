@@ -3,8 +3,8 @@
  * 综合备用模型
  */
 
-import { BaseAIService } from './base';
-import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse } from './types';
+import { BaseAIService } from '../base';
+import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse } from '../types';
 
 export class QwenService extends BaseAIService {
   constructor(config: ProviderConfig) {

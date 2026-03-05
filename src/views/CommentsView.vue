@@ -1,46 +1,7 @@
 <template>
   <div class="comments-view">
-    <!-- 舆论概览卡片 -->
-    <div class="opinion-card">
-      <div class="opinion-header">
-        <h3 class="opinion-title">📊 舆情概览</h3>
-        <van-tag :type="opinionTrendType" size="medium">
-          {{ opinionTrendText }}
-        </van-tag>
-      </div>
-      
-      <div class="opinion-stats">
-        <div class="stat-item">
-          <div class="stat-label">舆论热度</div>
-          <div class="stat-value" :class="getHeatClass(commentStore.publicOpinion.heat)">
-            {{ commentStore.publicOpinion.heat }}
-          </div>
-          <div class="stat-bar">
-            <div class="stat-fill" :style="{ width: `${commentStore.publicOpinion.heat}%` }"></div>
-          </div>
-        </div>
-        
-        <div class="stat-item">
-          <div class="stat-label">情感倾向</div>
-          <div class="stat-value" :class="getSentimentClass(commentStore.publicOpinion.sentiment)">
-            {{ commentStore.publicOpinion.sentiment > 0 ? '+' : '' }}{{ commentStore.publicOpinion.sentiment }}
-          </div>
-          <div class="stat-bar">
-            <div class="stat-fill sentiment" :style="{ 
-              width: `${Math.abs(commentStore.publicOpinion.sentiment)}%`,
-              left: commentStore.publicOpinion.sentiment < 0 ? 'auto' : '50%',
-              right: commentStore.publicOpinion.sentiment < 0 ? '50%' : 'auto'
-            }"></div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 触发事件 -->
-      <div v-if="commentStore.publicOpinion.triggers.length > 0" class="opinion-triggers">
-        <van-icon name="warning-o" color="#ee0a24" />
-        <span class="trigger-text">{{ commentStore.publicOpinion.triggers[0] }}</span>
-      </div>
-    </div>
+    <!-- 情感分析概览 -->
+    <SentimentOverview :stats="commentStore.sentimentStats" />
 
     <!-- 节奏事件提醒条 -->
     <van-notice-bar
@@ -54,19 +15,16 @@
       class="rhythm-alert"
     />
 
-    <!-- 生成评论按钮 -->
-    <div class="generate-section">
-      <van-button
-        type="primary"
-        size="small"
-        round
-        block
-        color="linear-gradient(to right, #FF69B4, #FFB6C1)"
-        @click="handleGenerateComments"
-      >
-        ✍️ 生成新评论（消耗 20 积分）
-      </van-button>
-    </div>
+    <!-- AI 评论生成器 -->
+    <CommentGenerator @generate="handleGeneratedComments" />
+
+    <!-- 评论列表 -->
+    <CommentList
+      :comments="displayedComments"
+      @like="handleLikeComment"
+      @reply="handleReplyComment"
+      @share="handleShareComment"
+    />
 
     <!-- 多平台评论展示 -->
     <div class="platform-section">
@@ -133,8 +91,11 @@
 import { ref, computed, onMounted } from 'vue';
 import { useCommentStore, type CommentFilter, type GameComment } from '@/stores/commentStore';
 import { useOperationStore } from '@/stores/operationStore';
-import { showToast, showConfirmDialog } from 'vant';
+import { showToast, showConfirmDialog, showDialog } from 'vant';
 import PlatformComments from '@/components/community/PlatformComments.vue';
+import CommentGenerator from '@/components/comments/CommentGenerator.vue';
+import CommentList from '@/components/comments/CommentList.vue';
+import SentimentOverview from '@/components/comments/SentimentOverview.vue';
 
 const commentStore = useCommentStore();
 const operationStore = useOperationStore();
@@ -148,6 +109,11 @@ const filter = ref<CommentFilter>({
   playerType: 'all'
 });
 
+// 显示所有评论
+const displayedComments = computed(() => {
+  return commentStore.comments;
+});
+
 // 未解决的节奏事件
 const pendingRhythms = computed(() => {
   return commentStore.getPendingRhythmEvents();
@@ -158,21 +124,35 @@ const totalReputationLoss = computed(() => {
   return pendingRhythms.value.reduce((sum, e) => sum + Math.abs(e.reputationImpact), 0);
 });
 
-// 舆论趋势类型
-const opinionTrendType = computed(() => {
-  const trend = commentStore.publicOpinion.trend;
-  if (trend === 'up') return 'success';
-  if (trend === 'down') return 'danger';
-  return 'default';
-});
+// 处理生成的评论
+function handleGeneratedComments(newComments: GameComment[]) {
+  showToast({
+    message: `成功生成${newComments.length}条评论`,
+    icon: 'success'
+  });
+}
 
-// 舆论趋势文字
-const opinionTrendText = computed(() => {
-  const trend = commentStore.publicOpinion.trend;
-  if (trend === 'up') return '📈 上升';
-  if (trend === 'down') return '📉 下降';
-  return '➡️ 稳定';
-});
+// 处理点赞
+function handleLikeComment(id: string) {
+  const success = commentStore.likeComment(id);
+  if (success) {
+    showToast('已点赞');
+  }
+}
+
+// 处理回复
+function handleReplyComment(id: string) {
+  showDialog({
+    title: '回复评论',
+    message: '功能开发中，敬请期待',
+    confirmButtonText: '知道了'
+  });
+}
+
+// 处理分享
+function handleShareComment(comment: GameComment) {
+  showToast('已复制到剪贴板');
+}
 
 // 处理控评操作
 async function handleControl(method: 'welfare' | 'control' | 'ignore') {
@@ -214,35 +194,6 @@ async function handleControl(method: 'welfare' | 'control' | 'ignore') {
   }
 }
 
-// 生成评论
-async function handleGenerateComments() {
-  const result = await commentStore.generateNewComments({
-    playerType: 'casual',
-    commentType: 'game',
-    count: 5
-  });
-  
-  if (result.success) {
-    showToast(result.message);
-  } else {
-    showToast(result.message);
-  }
-}
-
-// 获取热度等级颜色
-function getHeatClass(heat: number): string {
-  if (heat > 80) return 'high';
-  if (heat > 50) return 'medium';
-  return 'low';
-}
-
-// 获取情感等级颜色
-function getSentimentClass(sentiment: number): string {
-  if (sentiment > 50) return 'positive';
-  if (sentiment < -50) return 'negative';
-  return 'neutral';
-}
-
 // 初始化
 onMounted(() => {
   commentStore.initDefaultComments();
@@ -258,93 +209,6 @@ onMounted(() => {
   padding-bottom: 80px;
 }
 
-// 舆论概览卡片
-.opinion-card {
-  background: white;
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.opinion-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.opinion-title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: bold;
-  color: #333;
-}
-
-.opinion-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #999;
-}
-
-.stat-value {
-  font-size: 24px;
-  font-weight: bold;
-  
-  &.high { color: #ee0a24; }
-  &.medium { color: #ff976a; }
-  &.low { color: #07c160; }
-  
-  &.positive { color: #07c160; }
-  &.negative { color: #ee0a24; }
-  &.neutral { color: #999; }
-}
-
-.stat-bar {
-  height: 6px;
-  background: #f0f0f0;
-  border-radius: 3px;
-  overflow: hidden;
-  position: relative;
-}
-
-.stat-fill {
-  height: 100%;
-  background: linear-gradient(90deg, #FF69B4, #FFB6C1);
-  border-radius: 3px;
-  transition: width 0.3s ease;
-  
-  &.sentiment {
-    background: linear-gradient(90deg, #ee0a24, #07c160);
-  }
-}
-
-.opinion-triggers {
-  margin-top: 12px;
-  padding: 8px;
-  background: #ffe0e0;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  
-  .trigger-text {
-    font-size: 12px;
-    color: #ee0a24;
-  }
-}
-
 // 节奏事件提醒条
 .rhythm-alert {
   margin-bottom: 16px;
@@ -352,18 +216,9 @@ onMounted(() => {
   cursor: pointer;
 }
 
-// 生成评论按钮
-.generate-section {
-  margin: 16px;
-  
-  .van-button {
-    height: 40px;
-    font-size: 14px;
-  }
-}
-
 // 多平台评论区域
 .platform-section {
+  margin-top: 16px;
   margin-bottom: 16px;
 }
 

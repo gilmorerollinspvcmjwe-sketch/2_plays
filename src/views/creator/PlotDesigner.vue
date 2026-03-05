@@ -40,6 +40,73 @@
       </van-tab>
     </van-tabs>
 
+    <!-- 复杂度选择 -->
+    <div class="complexity-selection">
+      <h3 class="section-title">选择剧情复杂度</h3>
+      <div class="complexity-options">
+        <div
+          class="complexity-card"
+          :class="{ selected: complexity === 'simple' }"
+          @click="complexity = 'simple'"
+        >
+          <div class="complexity-icon">🌱</div>
+          <div class="complexity-name">简单</div>
+          <div class="complexity-desc">3-5个节点，适合新手</div>
+          <div class="complexity-tag">模板模式</div>
+        </div>
+        <div
+          class="complexity-card"
+          :class="{ selected: complexity === 'medium' }"
+          @click="complexity = 'medium'"
+        >
+          <div class="complexity-icon">🌿</div>
+          <div class="complexity-name">中等</div>
+          <div class="complexity-desc">5-10个节点，更多分支</div>
+          <div class="complexity-tag">向导模式</div>
+        </div>
+        <div
+          class="complexity-card"
+          :class="{ selected: complexity === 'complex' }"
+          @click="complexity = 'complex'"
+        >
+          <div class="complexity-icon">🌳</div>
+          <div class="complexity-name">复杂</div>
+          <div class="complexity-desc">10+节点，完整剧情树</div>
+          <div class="complexity-tag highlight">高级编辑器</div>
+        </div>
+      </div>
+      <div v-if="complexity === 'complex'" class="complexity-tip">
+        <van-icon name="info-o" />
+        <span>复杂剧情建议使用高级编辑器，支持可视化节点编辑</span>
+      </div>
+      <van-button
+        type="primary"
+        block
+        round
+        class="start-creation-btn"
+        @click="startPlotCreation"
+      >
+        开始创建剧情
+      </van-button>
+    </div>
+
+    <!-- 高级编辑入口 -->
+    <div class="advanced-editor-section">
+      <van-divider>或者</van-divider>
+      <van-button
+        type="primary"
+        plain
+        block
+        round
+        icon="edit"
+        @click="openPlotTreeEditor"
+        :disabled="!selectedProject"
+      >
+        打开高级剧情编辑器
+      </van-button>
+      <p v-if="!selectedProject" class="editor-tip">请先选择项目以启用高级编辑</p>
+    </div>
+
     <!-- 剧情模板选择 -->
     <div class="template-selection">
       <h3 class="section-title">选择剧情模板</h3>
@@ -275,14 +342,18 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { TemplateManager } from '@/utils/templateManager';
 import { usePointsStore } from '@/stores/points';
 import { useGameStore } from '@/stores/gameStore';
 import { useProjectStore } from '@/stores/projectStore';
+import { useCreatorGrowthStore, SKILL_EFFECTS } from '@/stores/creatorGrowth';
 import { showToast, showDialog } from 'vant';
 import BranchPreview from '@/components/plot/BranchPreview.vue';
 import { generateQualityReport } from '@/utils/plotAnalyzer';
 import type { PlotQualityReport, PlotBranch } from '@/types/plotBranch';
+
+const router = useRouter();
 
 const selectedRoute = ref('sweet');
 const selectedPlot = ref<any>(null);
@@ -294,6 +365,11 @@ const analysisReport = ref<PlotQualityReport | null>(null);
 const pointsStore = usePointsStore();
 const gameStore = useGameStore();
 const projectStore = useProjectStore();
+const creatorStore = useCreatorGrowthStore();
+
+// 剧情复杂度选择
+const complexity = ref<'simple' | 'medium' | 'complex'>('simple');
+const showComplexityPicker = ref(false);
 
 // 将选中的剧情转换为 PlotBranch 格式
 const plotBranchData = computed<PlotBranch | null>(() => {
@@ -326,18 +402,20 @@ const plotBranchData = computed<PlotBranch | null>(() => {
   return {
     id: selectedPlot.value.id,
     name: selectedPlot.value.title,
+    description: selectedPlot.value.summary,
     nodes,
     endings: [{
       id: 'ending',
-      name: selectedPlot.value.routeType === 'sweet' ? '甜蜜结局' :
+      type: selectedPlot.value.routeType === 'sweet' ? 'he' :
+            selectedPlot.value.routeType === 'angst' ? 'be' : 'ne',
+      title: selectedPlot.value.routeType === 'sweet' ? '甜蜜结局' :
             selectedPlot.value.routeType === 'angst' ? '虐心结局' : '真相大白',
-      type: selectedPlot.value.routeType === 'sweet' ? 'happy' :
-            selectedPlot.value.routeType === 'angst' ? 'sad' : 'normal',
-      condition: '完成所有章节',
       description: '根据你的选择达成最终结局',
-      requiredNodes: nodes.map(n => n.id),
-      probability: 1.0
-    }]
+      conditions: []
+    }],
+    emotionCurve: [],
+    estimatedDuration: selectedPlot.value.chapters.length * 5,
+    complexity: nodes.length > 10 ? 80 : nodes.length > 5 ? 50 : 30
   };
 });
 
@@ -477,8 +555,10 @@ const selectPlot = (plot: any) => {
   activeChapters.value = [1];
 };
 
-const getDifficultyType = (difficulty: string) => {
-  const map: Record<string, string> = {
+type TagType = 'primary' | 'success' | 'warning' | 'danger' | 'default';
+
+const getDifficultyType = (difficulty: string): TagType => {
+  const map: Record<string, TagType> = {
     '简单': 'success',
     '中等': 'warning',
     '困难': 'danger'
@@ -534,18 +614,22 @@ const savePlot = () => {
     });
     return;
   }
-  
+
   if (!selectedProject.value) {
     showToast('请先选择要绑定的项目');
     showProjectPicker.value = true;
     return;
   }
-  
+
   if (!selectedPlot.value) {
     showToast('请先选择剧情模板');
     return;
   }
-  
+
+  // 获取文案能力技能等级并应用加成
+  const copyLevel = creatorStore.getSkillLevel('copywriting');
+  const qualityBonus = SKILL_EFFECTS.copywriting.plotQualityBonus(copyLevel);
+
   // 构建剧情数据
   const plotData = {
     title: selectedPlot.value.title,
@@ -560,11 +644,14 @@ const savePlot = () => {
       choices: ch.choices,
       selectedChoice: ch.selectedChoice
     })),
-    characterIds: [] // 可以后续关联角色
+    characterIds: [], // 可以后续关联角色
+    // 应用文案能力加成到剧情质量
+    quality: Math.round(100 * (1 + qualityBonus)),
+    qualityBonus: Math.round(qualityBonus * 100)
   };
-  
+
   const plot = gameStore.addPlot(plotData);
-  
+
   if (plot) {
     // 如果选择了项目，绑定剧情到项目
     if (selectedProject.value) {
@@ -573,8 +660,14 @@ const savePlot = () => {
     } else {
       showToast('剧情设计已保存！');
     }
+
+    // 显示技能加成提示
+    if (copyLevel > 0) {
+      showToast(`文案能力Lv.${copyLevel}加成: 质量+${copyLevel * 5}%`);
+    }
+
     emit('save', plot);
-    
+
     // 重置选择
     selectedPlot.value = null;
     activeChapters.value = [];
@@ -602,9 +695,9 @@ const onSelectEnding = (ending: any) => {
 const showProjectPicker = ref(false);
 const selectedProject = ref<any>(null);
 
-// 可选项目列表（开发中的项目）
+// 可选项目列表（所有项目）
 const availableProjects = computed(() => {
-  return projectStore.projects.filter(p => p.status === 'developing');
+  return projectStore.projects;
 });
 
 // 选择项目
@@ -612,6 +705,51 @@ function selectProject(project: any) {
   selectedProject.value = project;
   showProjectPicker.value = false;
   showToast(`已选择项目：${project.name}`);
+}
+
+// 根据复杂度开始剧情创建
+function startPlotCreation() {
+  switch (complexity.value) {
+    case 'simple':
+      useTemplateMode();
+      break;
+    case 'medium':
+      useWizardMode();
+      break;
+    case 'complex':
+      openPlotTreeEditor();
+      break;
+  }
+}
+
+// 简单模式：使用模板（3-5个节点）
+function useTemplateMode() {
+  showComplexityPicker.value = false;
+  showToast('已选择简单模式，请从下方选择剧情模板');
+}
+
+// 中等模式：向导模式（5-10个节点）
+function useWizardMode() {
+  showComplexityPicker.value = false;
+  showToast('已选择中等模式，请从下方选择剧情模板');
+}
+
+// 打开高级剧情树编辑器
+function openPlotTreeEditor() {
+  if (!selectedProject.value) {
+    showToast('请先选择要绑定的项目');
+    showProjectPicker.value = true;
+    return;
+  }
+
+  const route = router.resolve({
+    path: '/creator/plot/editor',
+    query: {
+      projectId: selectedProject.value.id,
+      returnTo: '/creator/plot'
+    }
+  });
+  window.open(route.href, '_blank');
 }
 </script>
 
@@ -809,6 +947,104 @@ function selectProject(project: any) {
 .analysis-section,
 .preview-section {
   margin-top: 16px;
+}
+
+// 复杂度选择样式
+.complexity-selection {
+  padding: 16px;
+  background: white;
+  margin: 16px;
+  border-radius: 12px;
+}
+
+.complexity-options {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.complexity-card {
+  flex: 1;
+  padding: 16px 12px;
+  background: #f8f9fa;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.3s;
+
+  &:hover {
+    background: #fff5f7;
+  }
+
+  &.selected {
+    border-color: #FF69B4;
+    background: #fff0f3;
+  }
+}
+
+.complexity-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.complexity-name {
+  font-size: 15px;
+  font-weight: bold;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.complexity-desc {
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+}
+
+.complexity-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  background: #e8e8e8;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #666;
+
+  &.highlight {
+    background: linear-gradient(to right, #FF69B4, #FFB6C1);
+    color: white;
+  }
+}
+
+.complexity-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #e6f7ff;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #1890ff;
+
+  .van-icon {
+    font-size: 16px;
+  }
+}
+
+.start-creation-btn {
+  margin-top: 8px;
+}
+
+// 高级编辑器入口样式
+.advanced-editor-section {
+  padding: 0 16px 16px;
+
+  .editor-tip {
+    text-align: center;
+    font-size: 12px;
+    color: #999;
+    margin-top: 8px;
+  }
 }
 
 .analysis-popup {

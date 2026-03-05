@@ -86,7 +86,7 @@ const DEFAULT_CONFIG: AIGlobalConfig = {
   fallbackProviders: ['qwen', 'kimi', 'deepseek'],
   timeout: 10000,
   maxRetries: 3,
-  useMock: true
+  useMock: false
 };
 
 let globalConfig = { ...DEFAULT_CONFIG };

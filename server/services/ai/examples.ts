@@ -8,7 +8,7 @@ import {
   createAIServiceManager,
   AIServiceManager,
   AIProvider
-} from '../ai';
+} from './index';
 
 /**
  * 示例 1: 基础使用 - 创建管理器并发送请求

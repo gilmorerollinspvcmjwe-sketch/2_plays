@@ -15,16 +15,16 @@ import {
 } from './types';
 
 import { BaseAIService } from './base';
-import { MiniMaxService, createMiniMaxService } from './providers/minimax';
-import { KimiService, createKimiService } from './providers/kimi';
-import { DeepSeekService, createDeepSeekService } from './providers/deepseek';
-import { DoubaoService, createDoubaoService } from './providers/doubao';
-import { QwenService, createQwenService } from './providers/qwen';
+import { createMiniMaxService } from './providers/minimax';
+import { createKimiService } from './providers/kimi';
+import { createDeepSeekService } from './providers/deepseek';
+import { createDoubaoService } from './providers/doubao';
+import { createQwenService } from './providers/qwen';
 
 /**
  * 默认超时预设模板
  */
-const DEFAULT_TIMEOUT_TEMPLATES: Record<string, string> = {
+export const DEFAULT_TIMEOUT_TEMPLATES: Record<string, string> = {
   comment: '[评论] 由于响应超时，暂时无法生成评论。请稍后重试。',
   character: '[角色设定] 由于响应超时，暂时无法生成角色设定。请稍后重试。',
   long_text: '[长文本] 由于响应超时，暂时无法处理长文本。请稍后重试。',
@@ -35,7 +35,7 @@ const DEFAULT_TIMEOUT_TEMPLATES: Record<string, string> = {
 /**
  * 默认成本优化配置
  */
-const DEFAULT_COST_CONFIG: CostOptimizationConfig = {
+export const DEFAULT_COST_CONFIG: CostOptimizationConfig = {
   taskTypeProviderMap: {
     comment: 'minimax',    // 评论生成用 MiniMax（便宜且快速）
     long_text: 'kimi',     // 长文本用 Kimi（擅长处理）
@@ -48,7 +48,7 @@ const DEFAULT_COST_CONFIG: CostOptimizationConfig = {
 /**
  * 默认智能切换配置
  */
-const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
+export const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
   primaryProvider: 'minimax',
   fallbackProviders: ['qwen', 'kimi', 'deepseek'],
   maxRetries: 3,
@@ -58,7 +58,7 @@ const DEFAULT_FALLBACK_CONFIG: FallbackConfig = {
 /**
  * 默认超时配置
  */
-const DEFAULT_TIMEOUT_CONFIG: TimeoutConfig = {
+export const DEFAULT_TIMEOUT_CONFIG: TimeoutConfig = {
   defaultTimeout: 10000,
   fallbackTemplate: DEFAULT_TIMEOUT_TEMPLATES.general
 };
@@ -192,7 +192,7 @@ export class AIServiceManager {
             success: false,
             content: '',
             provider: currentProvider,
-            model: service.config.model,
+            model: 'unknown',
             error: error instanceof Error ? error.message : 'Unknown error'
           };
         }

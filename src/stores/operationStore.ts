@@ -16,6 +16,26 @@ import { generateRandomIncident } from '@/data/templates/incidents';
 import { getRandomEvent, getEventsByType } from '@/data/templates/events';
 import type { GachaResult } from './playerStore';
 import { useSimulationStore } from './simulationStore';
+import { useGameStore } from './gameStore';
+import { usePointsStore } from './points';
+import { useCommentStore } from './commentStore';
+import { linkageEngine, type LinkageEffect, type OperationModule } from '@/engine/linkageEngine';
+import type {
+  OperationPrediction as NewOperationPrediction,
+  PredictionVsActual,
+  ActiveOperationEffect,
+  GachaPoolConfig as PredictionGachaPoolConfig,
+  EventConfig as PredictionEventConfig,
+  WelfareConfig as PredictionWelfareConfig
+} from '@/types/operationPrediction';
+import type { ProjectOperationData } from '@/types/simulation';
+import {
+  predictGachaPoolImpact,
+  predictEventImpact,
+  predictWelfareImpact,
+  calculateAccuracy,
+  generateAnalysis
+} from '@/engine/operationPrediction';
 
 export interface PoolGachaStats {
   totalDraws: number;
@@ -83,14 +103,70 @@ export interface OperationStats {
   reputation: number;
 }
 
+// 运营决策
+export interface OperationDecision {
+  id: string;
+  type: 'gacha' | 'event' | 'welfare' | 'incident' | 'market';
+  name: string;
+  description?: string;
+  params: Record<string, any>;
+  timestamp: number;
+}
+
+// 效果
+export interface Effect {
+  sourceModule: OperationModule;
+  targetModule: OperationModule;
+  metric: string;
+  change: number;
+  duration: number;
+  delay: 'immediate' | 'short' | 'medium' | 'long';
+}
+
+// 运营预测
+export interface OperationPrediction {
+  decision: OperationDecision;
+  predictedEffects: {
+    immediate: Effect[];
+    shortTerm: Effect[];
+    longTerm: Effect[];
+  };
+  confidence: number;
+}
+
+// 实际效果追踪
+export interface TrackedEffect {
+  predictionId: string;
+  operationId: string;
+  metric: string;
+  predictedChange: number;
+  actualChange: number;
+  variance: number;
+  trackedAt: number;
+}
+
 export const useOperationStore = defineStore('operation', () => {
-  // 引入 simulationStore
+  // 引入其他 stores
   const simulationStore = useSimulationStore();
+  const pointsStore = usePointsStore();
+  const commentStore = useCommentStore();
   
-  // State - 不在这里初始化 store，等使用时再动态导入
+  // State
   const gachaPools = ref<GachaPool[]>([]);
   const events = ref<GameEvent[]>([]);
   const incidents = ref<OperationIncident[]>([]);
+  
+  // 预测缓存
+  const predictionCache = ref<Map<string, OperationPrediction>>(new Map());
+  const trackedEffects = ref<TrackedEffect[]>([]);
+  const operationPredictions = ref<Map<string, OperationPrediction>>(new Map());
+  
+  // Phase 3: 新增预测和追踪状态
+  const newOperationPredictions = ref<Map<string, NewOperationPrediction>>(new Map());
+  const activeOperationEffects = ref<Map<string, ActiveOperationEffect>>(new Map());
+  const completedOperationEffects = ref<PredictionVsActual[]>([]);
+  const recentWelfareValue = ref<number>(0);
+  const welfareHistory = ref<Array<{ id: string; type: string; value: number; givenAt: string; prediction?: NewOperationPrediction }>>([]);
   
   // 从 simulationStore 获取运营数据
   const stats = computed<OperationStats>(() => ({
@@ -556,8 +632,6 @@ export const useOperationStore = defineStore('operation', () => {
    * 发放福利
    */
   async function sendWelfare(_type: 'compensation' | 'login' | 'redeem', _content: string, _value: number): Promise<{ success: boolean; message: string }> {
-    const pointsStore = usePointsStore();
-    const commentStore = useCommentStore();
     
     // 消耗钻石（假设每次福利发放消耗 1000 钻石）
     const cost = 1000;
@@ -684,7 +758,13 @@ export const useOperationStore = defineStore('operation', () => {
       gachaPools: gachaPools.value,
       events: events.value,
       incidents: incidents.value,
-      stats: stats.value
+      stats: stats.value,
+      // Phase 3: 新增数据
+      newOperationPredictions: Array.from(newOperationPredictions.value.entries()),
+      activeOperationEffects: Array.from(activeOperationEffects.value.entries()),
+      completedOperationEffects: completedOperationEffects.value,
+      recentWelfareValue: recentWelfareValue.value,
+      welfareHistory: welfareHistory.value
     };
     localStorage.setItem('operation_data', JSON.stringify(data));
   }
@@ -700,13 +780,23 @@ export const useOperationStore = defineStore('operation', () => {
         gachaPools.value = data.gachaPools || [];
         events.value = data.events || [];
         incidents.value = data.incidents || [];
-        stats.value = data.stats || {
-          dailyRevenue: 0,
-          activePlayers: 0,
-          totalDraws: 0,
-          eventParticipation: 0,
-          reputation: 80
-        };
+        
+        // Phase 3: 加载新增数据
+        if (data.newOperationPredictions) {
+          newOperationPredictions.value = new Map(data.newOperationPredictions);
+        }
+        if (data.activeOperationEffects) {
+          activeOperationEffects.value = new Map(data.activeOperationEffects);
+        }
+        if (data.completedOperationEffects) {
+          completedOperationEffects.value = data.completedOperationEffects;
+        }
+        if (data.recentWelfareValue !== undefined) {
+          recentWelfareValue.value = data.recentWelfareValue;
+        }
+        if (data.welfareHistory) {
+          welfareHistory.value = data.welfareHistory;
+        }
       } catch (e) {
         console.error('加载运营数据失败:', e);
       }
@@ -855,6 +945,705 @@ export const useOperationStore = defineStore('operation', () => {
     };
   }
   
+  /**
+   * 生成运营决策效果预测
+   * @param decision 运营决策
+   * @returns 预测结果
+   */
+  function generatePrediction(decision: OperationDecision): OperationPrediction {
+    // 检查缓存
+    const cacheKey = `${decision.type}_${decision.id}`;
+    const cached = predictionCache.value.get(cacheKey);
+    if (cached && Date.now() - cached.decision.timestamp < 5 * 60 * 1000) {
+      // 5分钟内使用缓存
+      return cached;
+    }
+    
+    // 创建联动上下文
+    const context = {
+      projectId: decision.id,
+      currentMetrics: {
+        satisfaction: stats.value.reputation,
+        dailyRevenue: stats.value.dailyRevenue,
+        activePlayers: stats.value.activePlayers,
+        ...decision.params
+      },
+      daysPassed: 0,
+      ...decision.params
+    };
+    
+    // 根据决策类型触发不同的联动规则
+    const immediateEffects: Effect[] = [];
+    const shortTermEffects: Effect[] = [];
+    const longTermEffects: Effect[] = [];
+    
+    // 触发联动计算
+    const sourceModule = decision.type as OperationModule;
+    const action = decision.params.action || 'default';
+    const value = decision.params.value || 0;
+    
+    const result = linkageEngine.trigger(sourceModule, action, value, context);
+    
+    // 分类效果
+    result.immediateEffects.forEach((effect: LinkageEffect) => {
+      immediateEffects.push({
+        sourceModule: effect.sourceModule,
+        targetModule: effect.targetModule,
+        metric: effect.metric,
+        change: effect.change,
+        duration: effect.duration,
+        delay: effect.delay
+      });
+    });
+    
+    // 获取队列中的延迟效果
+    const queuedEffects = linkageEngine.getQueuedEffects();
+    queuedEffects.forEach((effect: LinkageEffect & { delayDays?: number }) => {
+      const effectData: Effect = {
+        sourceModule: effect.sourceModule,
+        targetModule: effect.targetModule,
+        metric: effect.metric,
+        change: effect.change,
+        duration: effect.duration,
+        delay: effect.delay
+      };
+      
+      if (effect.delay === 'short' || (effect.delayDays && effect.delayDays <= 7)) {
+        shortTermEffects.push(effectData);
+      } else {
+        longTermEffects.push(effectData);
+      }
+    });
+    
+    // 计算置信度（基于历史数据和决策复杂度）
+    let confidence = 0.7; // 基础置信度
+    
+    // 根据决策类型调整置信度
+    const typeConfidence: Record<string, number> = {
+      'gacha': 0.85,
+      'event': 0.75,
+      'welfare': 0.80,
+      'incident': 0.60,
+      'market': 0.65
+    };
+    confidence = typeConfidence[decision.type] || 0.7;
+    
+    // 根据参数完整度调整
+    const paramCount = Object.keys(decision.params).length;
+    if (paramCount > 5) {
+      confidence += 0.1;
+    } else if (paramCount < 3) {
+      confidence -= 0.1;
+    }
+    
+    // 确保置信度在0-1之间
+    confidence = Math.max(0.3, Math.min(0.95, confidence));
+    
+    const prediction: OperationPrediction = {
+      decision,
+      predictedEffects: {
+        immediate: immediateEffects,
+        shortTerm: shortTermEffects,
+        longTerm: longTermEffects
+      },
+      confidence
+    };
+    
+    // 缓存预测结果
+    predictionCache.value.set(cacheKey, prediction);
+    operationPredictions.value.set(decision.id, prediction);
+    
+    return prediction;
+  }
+  
+  /**
+   * 追踪实际效果
+   * @param operationId 运营操作ID
+   */
+  function trackActualEffects(operationId: string): TrackedEffect[] {
+    const prediction = operationPredictions.value.get(operationId);
+    if (!prediction) {
+      console.warn(`未找到操作 ${operationId} 的预测记录`);
+      return [];
+    }
+    
+    const newTrackedEffects: TrackedEffect[] = [];
+    const allPredictedEffects = [
+      ...prediction.predictedEffects.immediate,
+      ...prediction.predictedEffects.shortTerm,
+      ...prediction.predictedEffects.longTerm
+    ];
+    
+    // 获取当前实际数据
+    const currentStats = { ...stats.value };
+    
+    allPredictedEffects.forEach((effect, index) => {
+      // 模拟实际变化（实际项目中应该从历史数据对比获取）
+      // 这里添加一些随机波动来模拟真实情况
+      const variance = (Math.random() - 0.5) * 0.4; // ±20% 波动
+      const actualChange = effect.change * (1 + variance);
+      
+      const tracked: TrackedEffect = {
+        predictionId: `${operationId}_${index}`,
+        operationId,
+        metric: effect.metric,
+        predictedChange: effect.change,
+        actualChange,
+        variance: actualChange - effect.change,
+        trackedAt: Date.now()
+      };
+      
+      trackedEffects.value.push(tracked);
+      newTrackedEffects.push(tracked);
+    });
+    
+    // 保存到本地存储
+    saveTrackedEffects();
+    
+    return newTrackedEffects;
+  }
+  
+  /**
+   * 获取预测与实际对比数据
+   * @param operationId 运营操作ID
+   */
+  function getPredictionComparison(operationId: string): {
+    metric: string;
+    predicted: number;
+    actual: number;
+    accuracy: number;
+  }[] {
+    const relatedEffects = trackedEffects.value.filter(e => e.operationId === operationId);
+    
+    return relatedEffects.map(effect => ({
+      metric: effect.metric,
+      predicted: effect.predictedChange,
+      actual: effect.actualChange,
+      accuracy: effect.predictedChange !== 0 
+        ? 1 - Math.abs(effect.variance / effect.predictedChange)
+        : 1
+    }));
+  }
+  
+  /**
+   * 保存追踪数据到本地存储
+   */
+  function saveTrackedEffects(): void {
+    const data = {
+      trackedEffects: trackedEffects.value,
+      operationPredictions: Array.from(operationPredictions.value.entries())
+    };
+    localStorage.setItem('operation_predictions', JSON.stringify(data));
+  }
+  
+  /**
+   * 从本地存储加载追踪数据
+   */
+  function loadTrackedEffects(): void {
+    const saved = localStorage.getItem('operation_predictions');
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        trackedEffects.value = data.trackedEffects || [];
+        if (data.operationPredictions) {
+          operationPredictions.value = new Map(data.operationPredictions);
+        }
+      } catch (e) {
+        console.error('加载预测追踪数据失败:', e);
+      }
+    }
+  }
+  
+  /**
+   * 清除预测缓存
+   */
+  function clearPredictionCache(): void {
+    predictionCache.value.clear();
+  }
+
+  /**
+   * 计算卡池收益（考虑人气加成）
+   * 基础收益 × 人气加成 × 爆率加成
+   * 人气>=80: +50%, >=60: +20%, <40: -20%, <20: -30%
+   */
+  function calculateGachaRevenue(poolId: string): number {
+    const pool = gachaPools.value.find(p => p.id === poolId);
+    if (!pool) {
+      console.error(`卡池 ${poolId} 不存在`);
+      return 0;
+    }
+
+    const gameStore = useGameStore();
+    let popularityBonus = 1.0;
+
+    // 如果有 UP 角色，计算人气加成
+    if (pool.upCharacters.length > 0) {
+      const charId = pool.upCharacters[0]; // 取第一个 UP 角色
+      const charPopularity = gameStore.getCharacterPopularity(charId);
+
+      if (charPopularity) {
+        const popularity = charPopularity.popularity;
+
+        // 人气加成规则
+        if (popularity >= 80) {
+          popularityBonus = 1.5; // +50%
+        } else if (popularity >= 60) {
+          popularityBonus = 1.2; // +20%
+        } else if (popularity >= 40) {
+          popularityBonus = 1.0; // 正常
+        } else if (popularity >= 20) {
+          popularityBonus = 0.8; // -20%
+        } else {
+          popularityBonus = 0.7; // -30%
+        }
+      }
+    }
+
+    // 爆率加成（SSR 爆率越高，收益越高）
+    const rateBonus = 1 + (pool.rates.ssr - 2) * 0.1; // 基准 2%，每增加 1% 增加 10% 收益
+
+    // 基础收益
+    const baseRevenue = pool.totalDraws * 10; // 假设每次抽卡消耗 10 积分
+
+    // 计算最终收益
+    const finalRevenue = Math.round(baseRevenue * popularityBonus * rateBonus);
+
+    // 更新卡池的人气加成记录
+    pool.popularityBonus = popularityBonus;
+
+    return finalRevenue;
+  }
+
+  /**
+   * 卡池运营提升角色人气
+   * 每日曝光+2，福利好的卡池额外+3
+   */
+  function updateCharacterPopularityFromGacha(poolId: string): void {
+    const pool = gachaPools.value.find(p => p.id === poolId);
+    if (!pool) {
+      console.error(`卡池 ${poolId} 不存在`);
+      return;
+    }
+
+    const gameStore = useGameStore();
+
+    // 为每个 UP 角色增加人气
+    pool.upCharacters.forEach(charId => {
+      // 基础曝光加成
+      let popularityIncrease = 2;
+
+      // 福利好的卡池额外加成
+      if (pool.budget === '高') {
+        popularityIncrease += 3;
+      } else if (pool.budget === '中') {
+        popularityIncrease += 1;
+      }
+
+      // 爆率高的卡池额外加成
+      if (pool.rates.ssr >= 3) {
+        popularityIncrease += 1;
+      }
+
+      // 更新角色人气
+      gameStore.updateCharacterPopularity(charId, {
+        popularity: popularityIncrease
+      });
+
+      // 增加卡池抽取次数统计
+      gameStore.updateCharacterPopularity(charId, {
+        gachaCount: pool.totalDraws
+      });
+    });
+
+    saveToLocal();
+  }
+
+  /**
+   * 获取角色人气排行（Top10）
+   */
+  function getCharacterPopularityRanking(limit: number = 10): { characterId: string; name: string; popularity: number; isInPool: boolean }[] {
+    const gameStore = useGameStore();
+    const ranking = gameStore.getPopularityRanking(limit);
+
+    // 如果 ranking 不是数组，返回空数组
+    if (!Array.isArray(ranking)) {
+      return [];
+    }
+
+    // 获取当前所有进行中的卡池的 UP 角色
+    const upCharacterIds = new Set<string>();
+    
+    // 安全地访问 gachaPools
+    const pools = gachaPools.value || [];
+    pools
+      .filter(p => p && (p.status === 'ongoing' || p.status === 'upcoming'))
+      .forEach(p => {
+        if (p.upCharacters && Array.isArray(p.upCharacters)) {
+          p.upCharacters.forEach(charId => upCharacterIds.add(charId));
+        }
+      });
+
+    return ranking.map(char => ({
+      ...char,
+      isInPool: upCharacterIds.has(char.characterId)
+    }));
+  }
+
+  /**
+   * 获取建议 UP 的角色（人气高但未 UP）
+   */
+  function getRecommendedUpCharacters(): { characterId: string; name: string; popularity: number }[] {
+    const ranking = getCharacterPopularityRanking(20);
+
+    // 如果 ranking 不是数组，返回空数组
+    if (!Array.isArray(ranking)) {
+      return [];
+    }
+
+    // 过滤出人气 >= 60 且未在卡池中的角色
+    return ranking
+      .filter(char => char && char.popularity >= 60 && !char.isInPool)
+      .map(char => ({
+        characterId: char.characterId,
+        name: char.name,
+        popularity: char.popularity
+      }));
+  }
+
+  // ==================== Phase 3: 预测和追踪方法 ====================
+
+  /**
+   * 创建卡池并生成预测
+   */
+  async function createGachaPoolWithPrediction(
+    poolData: Omit<GachaPool, 'id' | 'totalDraws' | 'revenue' | 'status' | 'gachaResults' | 'ssrCount' | 'srCount' | 'rCount' | 'averagePity'>,
+    projectId: string
+  ): Promise<{ success: boolean; message: string; prediction?: NewOperationPrediction }> {
+    const gameStore = useGameStore();
+    const simulationStore = useSimulationStore();
+
+    // 1. 获取UP角色数据
+    const upCharacterId = poolData.upCharacters[0];
+    const upCharacter = gameStore.characters.find(c => c.id === upCharacterId);
+    if (!upCharacter) {
+      return { success: false, message: 'UP角色不存在' };
+    }
+
+    // 2. 获取当前项目运营数据
+    const projectData = simulationStore.getProjectOperationData(projectId);
+    if (!projectData) {
+      return { success: false, message: '项目运营数据不存在，请先发布项目' };
+    }
+
+    // 3. 生成效果预测
+    const poolConfig: PredictionGachaPoolConfig = {
+      id: `pool_${Date.now()}`,
+      projectId,
+      name: poolData.name,
+      upCharacters: poolData.upCharacters,
+      ssrRate: poolData.rates.ssr / 100,
+      srRate: poolData.rates.sr / 100,
+      rRate: poolData.rates.r / 100,
+      startDate: poolData.startTime,
+      endDate: poolData.endTime,
+      status: 'upcoming'
+    };
+
+    const prediction = predictGachaPoolImpact(poolConfig, projectData, upCharacter);
+
+    // 4. 存储预测
+    newOperationPredictions.value.set(poolConfig.id, prediction);
+
+    // 5. 创建卡池
+    const result = await createGachaPool(poolData);
+
+    if (result.success) {
+      // 关联预测到卡池
+      const newPool = gachaPools.value[gachaPools.value.length - 1];
+      newOperationPredictions.value.set(newPool.id, prediction);
+
+      return {
+        success: true,
+        message: result.message,
+        prediction
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * 创建活动并生成预测
+   */
+  async function createEventWithPrediction(
+    eventData: Omit<GameEvent, 'id' | 'participants' | 'status'>,
+    projectId: string
+  ): Promise<{ success: boolean; message: string; prediction?: NewOperationPrediction }> {
+    const simulationStore = useSimulationStore();
+
+    // 1. 获取当前项目运营数据
+    const projectData = simulationStore.getProjectOperationData(projectId);
+    if (!projectData) {
+      return { success: false, message: '项目运营数据不存在，请先发布项目' };
+    }
+
+    // 2. 生成效果预测
+    const eventConfig: PredictionEventConfig = {
+      id: `event_${Date.now()}`,
+      projectId,
+      name: eventData.name,
+      type: eventData.type as any,
+      rewards: eventData.rewards.map(r => ({ value: 100 })), // 简化处理
+      startDate: eventData.startTime,
+      endDate: eventData.endTime,
+      status: 'upcoming'
+    };
+
+    const prediction = predictEventImpact(eventConfig, projectData);
+
+    // 3. 存储预测
+    newOperationPredictions.value.set(eventConfig.id, prediction);
+
+    // 4. 创建活动
+    const result = await createEvent(eventData);
+
+    if (result.success) {
+      const newEvent = events.value[events.value.length - 1];
+      newOperationPredictions.value.set(newEvent.id, prediction);
+
+      return {
+        success: true,
+        message: result.message,
+        prediction
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * 发放福利并生成预测
+   */
+  async function giveWelfareWithPrediction(
+    welfareConfig: PredictionWelfareConfig,
+    projectId: string
+  ): Promise<{ success: boolean; message: string; prediction?: NewOperationPrediction }> {
+    const simulationStore = useSimulationStore();
+
+    // 1. 获取当前项目运营数据
+    const projectData = simulationStore.getProjectOperationData(projectId);
+    if (!projectData) {
+      return { success: false, message: '项目运营数据不存在，请先发布项目' };
+    }
+
+    // 2. 生成效果预测
+    const prediction = predictWelfareImpact(welfareConfig, projectData);
+
+    // 3. 存储预测
+    newOperationPredictions.value.set(welfareConfig.id, prediction);
+
+    // 4. 记录福利
+    welfareHistory.value.push({
+      ...welfareConfig,
+      givenAt: new Date().toISOString(),
+      prediction
+    });
+
+    // 5. 更新最近福利值
+    recentWelfareValue.value += welfareConfig.value;
+
+    // 6. 调用原有的福利发放
+    const result = await sendWelfare(
+      welfareConfig.type as any,
+      welfareConfig.description || `${welfareConfig.type}福利`,
+      welfareConfig.value
+    );
+
+    if (result.success) {
+      return {
+        success: true,
+        message: result.message,
+        prediction
+      };
+    }
+
+    return result;
+  }
+
+  /**
+   * 启动运营操作（从预告变为进行中）
+   */
+  function launchOperation(operationId: string, type: 'gacha' | 'event' | 'welfare'): boolean {
+    const simulationStore = useSimulationStore();
+
+    switch (type) {
+      case 'gacha': {
+        const pool = gachaPools.value.find(p => p.id === operationId);
+        if (!pool) return false;
+        pool.status = 'ongoing';
+        break;
+      }
+      case 'event': {
+        const event = events.value.find(e => e.id === operationId);
+        if (!event) return false;
+        event.status = 'ongoing';
+        break;
+      }
+      case 'welfare':
+        // 福利立即生效
+        break;
+    }
+
+    // 记录预测用于后续对比
+    const prediction = newOperationPredictions.value.get(operationId);
+    if (prediction) {
+      const projectData = simulationStore.getProjectOperationData(prediction.operationId);
+      if (projectData) {
+        activeOperationEffects.value.set(operationId, {
+          type,
+          prediction,
+          startData: { ...projectData },
+          startDay: simulationStore.currentDay
+        });
+      }
+    }
+
+    saveToLocal();
+    return true;
+  }
+
+  /**
+   * 更新运营效果追踪
+   */
+  function updateOperationEffectTracking(
+    projectResults: Array<{
+      projectId: string;
+      operationData: ProjectOperationData;
+    }>
+  ): void {
+    activeOperationEffects.value.forEach((effect, operationId) => {
+      const currentData = projectResults.find(
+        r => r.projectId === effect.startData.projectId
+      )?.operationData;
+
+      if (!currentData) return;
+
+      // 计算实际变化
+      const actual = {
+        revenueChange: currentData.dailyRevenue - effect.startData.dailyRevenue,
+        satisfactionChange: currentData.satisfaction - effect.startData.satisfaction,
+        retentionChange: currentData.retentionRate - effect.startData.retentionRate,
+        payRateChange: currentData.payRate - effect.startData.payRate,
+        activePlayersChange: currentData.activePlayers - effect.startData.activePlayers
+      };
+
+      // 计算准确度
+      const predicted = effect.prediction.predicted;
+      const accuracy = {
+        revenue: calculateAccuracy(predicted.revenueChange, actual.revenueChange),
+        satisfaction: calculateAccuracy(predicted.satisfactionChange, actual.satisfactionChange),
+        retention: calculateAccuracy(predicted.retentionChange, actual.retentionChange),
+        overall: 0
+      };
+      accuracy.overall = (accuracy.revenue + accuracy.satisfaction + accuracy.retention) / 3;
+
+      // 检查效果是否结束
+      const isEffectEnded = checkIfEffectEnded(operationId, effect.type);
+      if (isEffectEnded) {
+        const comparison: PredictionVsActual = {
+          operationId,
+          operationType: effect.type,
+          predicted,
+          actual,
+          accuracy,
+          analysis: generateAnalysis(effect.prediction, actual, accuracy),
+          createdAt: effect.prediction.createdAt,
+          completedAt: new Date().toISOString()
+        };
+
+        completedOperationEffects.value.push(comparison);
+        activeOperationEffects.value.delete(operationId);
+      }
+    });
+
+    saveToLocal();
+  }
+
+  /**
+   * 检查运营效果是否结束
+   */
+  function checkIfEffectEnded(operationId: string, type: string): boolean {
+    const now = new Date().toISOString();
+
+    switch (type) {
+      case 'gacha': {
+        const pool = gachaPools.value.find(p => p.id === operationId);
+        return !pool || pool.status === 'ended' || pool.endTime < now;
+      }
+      case 'event': {
+        const event = events.value.find(e => e.id === operationId);
+        return !event || event.status === 'ended' || event.endTime < now;
+      }
+      case 'welfare': {
+        // 福利效果持续3天
+        const welfare = welfareHistory.value.find(w => w.id === operationId);
+        if (welfare) {
+          const givenAt = new Date(welfare.givenAt);
+          const threeDaysLater = new Date(givenAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+          return new Date() > threeDaysLater;
+        }
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * 获取预测
+   */
+  function getPrediction(operationId: string): NewOperationPrediction | undefined {
+    return newOperationPredictions.value.get(operationId);
+  }
+
+  /**
+   * 获取所有预测
+   */
+  function getAllPredictions(): NewOperationPrediction[] {
+    return Array.from(newOperationPredictions.value.values());
+  }
+
+  /**
+   * 获取进行中的效果追踪
+   */
+  function getActiveEffects(): Array<{ operationId: string; effect: ActiveOperationEffect }> {
+    return Array.from(activeOperationEffects.value.entries()).map(([id, effect]) => ({
+      operationId: id,
+      effect
+    }));
+  }
+
+  /**
+   * 获取已完成的效果对比
+   */
+  function getCompletedEffects(): PredictionVsActual[] {
+    return [...completedOperationEffects.value];
+  }
+
+  /**
+   * 获取最近福利值
+   */
+  function getRecentWelfareValue(): number {
+    return recentWelfareValue.value;
+  }
+
+  /**
+   * 重置最近福利值（每日调用）
+   */
+  function resetRecentWelfare(): void {
+    recentWelfareValue.value = 0;
+  }
+
   // 初始化时加载数据
   loadFromLocal();
   
@@ -897,6 +1686,40 @@ export const useOperationStore = defineStore('operation', () => {
     checkTodayBirthdays,
     createBirthdayPool,
     processTodayBirthdays,
-    getBirthdayEventStatus
+    getBirthdayEventStatus,
+
+    // 角色人气与卡池收益联动
+    calculateGachaRevenue,
+    updateCharacterPopularityFromGacha,
+    getCharacterPopularityRanking,
+    getRecommendedUpCharacters,
+    
+    // 效果预测与追踪
+    generatePrediction,
+    trackActualEffects,
+    getPredictionComparison,
+    clearPredictionCache,
+    loadTrackedEffects,
+    saveTrackedEffects,
+    
+    // Phase 3: 新增预测和追踪
+    createGachaPoolWithPrediction,
+    createEventWithPrediction,
+    giveWelfareWithPrediction,
+    launchOperation,
+    updateOperationEffectTracking,
+    getPrediction,
+    getAllPredictions,
+    getActiveEffects,
+    getCompletedEffects,
+    getRecentWelfareValue,
+    resetRecentWelfare,
+    
+    // Phase 3: 新增状态
+    newOperationPredictions,
+    activeOperationEffects,
+    completedOperationEffects,
+    recentWelfareValue,
+    welfareHistory
   };
 });

@@ -3,8 +3,8 @@
  * 角色设定专家
  */
 
-import { BaseAIService } from './base';
-import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse } from './types';
+import { BaseAIService } from '../base';
+import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse } from '../types';
 
 export class DeepSeekService extends BaseAIService {
   constructor(config: ProviderConfig) {

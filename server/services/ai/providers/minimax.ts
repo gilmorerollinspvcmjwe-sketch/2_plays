@@ -3,8 +3,8 @@
  * 评论生成主力模型
  */
 
-import { BaseAIService } from './base';
-import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse } from './types';
+import { BaseAIService } from '../base';
+import { AIProvider, ProviderConfig, AIRequestConfig, AIResponse } from '../types';
 
 export class MiniMaxService extends BaseAIService {
   constructor(config: ProviderConfig) {

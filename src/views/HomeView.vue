@@ -9,7 +9,6 @@
       :average-satisfaction="employeeStore.averageSatisfaction"
       @create-project="showCreateProject = true"
       @team-management="goToTeamManagement"
-      @view-reports="goToReports"
       @recruit="goToRecruit"
     />
 
@@ -355,10 +354,6 @@ function handlePendingTask(task: PendingTask) {
 
 function goToTeamManagement() {
   router.push('/team-management');
-}
-
-function goToReports() {
-  showToast('报表功能开发中');
 }
 
 function goToRecruit() {

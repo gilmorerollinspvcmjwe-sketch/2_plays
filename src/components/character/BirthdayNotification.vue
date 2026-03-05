@@ -1,125 +1,98 @@
 <template>
-  <div class="birthday-notification" v-if="todayBirthdays.length > 0 || upcomingBirthdays.length > 0">
-    <van-notice-bar
-      v-if="todayBirthdays.length > 0"
-      left-icon="birthday"
-      background="linear-gradient(to right, #FFF5F7, #FFE4E8)"
-      color="#FF69B4"
-      scrollable
-    >
-      🎂 今天是 {{ todayBirthdays.map(c => c.name).join('、') }} 的生日！
-    </van-notice-bar>
-    
-    <div class="birthday-list" v-if="showList">
-      <van-cell-group title="🎂 今日生日">
-        <van-cell
-          v-for="char in todayBirthdays"
-          :key="char.id"
-          :title="char.name"
-          :label="`人气 +20%`"
-          clickable
-          @click="$emit('select-character', char)"
-        >
-          <template #icon>
-            <span class="birthday-icon">🎂</span>
-          </template>
-          <template #right-icon>
-            <van-tag type="danger" size="medium">今日</van-tag>
-          </template>
-        </van-cell>
-      </van-cell-group>
-      
-      <van-cell-group title="📅 即将到来" v-if="upcomingBirthdays.length > 0">
-        <van-cell
-          v-for="{ character, daysUntil } in upcomingBirthdays"
-          :key="character.id"
-          :title="character.name"
-          :label="`${character.birthday?.month}月${character.birthday?.day}日`"
-          clickable
-          @click="$emit('select-character', character)"
-        >
-          <template #icon>
-            <span class="upcoming-icon">🎁</span>
-          </template>
-          <template #right-icon>
-            <van-tag type="primary" size="medium">{{ daysUntil }}天后</van-tag>
-          </template>
-        </van-cell>
-      </van-cell-group>
+  <van-popup v-model:show="showPopup" position="top" :style="{ background: 'linear-gradient(180deg, #FFE4E8 0%, #FFF5F7 100%)' }">
+    <div class="birthday-notification">
+      <div class="birthday-icon">🎂</div>
+      <h3 class="birthday-title">生日快乐！</h3>
+      <p class="birthday-message">
+        今天是 <span class="character-name">{{ character?.name }}</span> 的生日
+        <br>
+        为他准备一份特别的礼物吧！
+      </p>
+      <div class="birthday-actions">
+        <van-button size="small" plain @click="handleClose">
+          稍后再说
+        </van-button>
+        <van-button size="small" type="primary" @click="handleCelebrate">
+          🎁 庆祝生日
+        </van-button>
+      </div>
     </div>
-    
-    <div class="toggle-btn" v-if="upcomingBirthdays.length > 0" @click="showList = !showList">
-      <van-icon :name="showList ? 'arrow-up' : 'arrow-down'" />
-      {{ showList ? '收起' : '查看更多生日' }}
-    </div>
-  </div>
+  </van-popup>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { useGameStore } from '@/stores/gameStore';
+import { computed } from 'vue'
+import { Character } from '@/types'
 
-const gameStore = useGameStore();
-const showList = ref(false);
+interface Props {
+  character: Character | null
+  show: boolean
+}
 
-const emit = defineEmits(['select-character']);
+interface Emits {
+  (e: 'celebrate', characterId: string): void
+  (e: 'close'): void
+}
 
-const todayBirthdays = computed(() => {
-  return gameStore.getTodayBirthdayCharacters();
-});
+const props = withDefaults(defineProps<Props>(), {
+  character: null
+})
 
-const upcomingBirthdays = computed(() => {
-  return gameStore.getUpcomingBirthdays(30).filter(item => item.daysUntil > 0);
-});
+const emit = defineEmits<Emits>()
+
+const showPopup = computed({
+  get: () => props.show,
+  set: (value) => {
+    if (!value) {
+      emit('close')
+    }
+  }
+})
+
+const handleClose = () => {
+  emit('close')
+}
+
+const handleCelebrate = () => {
+  if (props.character) {
+    emit('celebrate', props.character.id)
+  }
+}
 </script>
 
 <style scoped lang="scss">
 .birthday-notification {
-  margin-bottom: 16px;
+  padding: 24px 16px;
+  text-align: center;
   
-  .birthday-list {
-    margin-top: 8px;
-    background: white;
-    border-radius: 12px;
-    overflow: hidden;
+  .birthday-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
   }
   
-  .birthday-icon,
-  .upcoming-icon {
+  .birthday-title {
     font-size: 20px;
-    margin-right: 8px;
+    font-weight: bold;
+    color: #FF69B4;
+    margin-bottom: 8px;
   }
   
-  .toggle-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    padding: 12px;
-    background: white;
-    border-radius: 8px;
-    margin-top: 8px;
+  .birthday-message {
     font-size: 14px;
     color: #666;
-    cursor: pointer;
+    line-height: 1.6;
+    margin-bottom: 16px;
     
-    &:hover {
-      background: #f9f9f9;
+    .character-name {
+      color: #FF69B4;
+      font-weight: bold;
     }
   }
-}
-
-:deep(.van-cell-group__title) {
-  padding-left: 16px;
-  font-size: 14px;
-  color: #666;
-}
-
-:deep(.van-cell) {
-  padding: 12px 16px;
   
-  &:active {
-    background: #f9f9f9;
+  .birthday-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
   }
 }
 </style>

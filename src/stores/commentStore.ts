@@ -9,6 +9,13 @@ import type { CommentType, CommentSentiment, PlayerType, CommentTemplate } from 
 import { generateComment, generateComments, getRandomPlayerType, getRandomCommentType } from '@/data/templates/comments';
 import { getRandomLossComment, getRandomReturnComment } from '@/data/templates/lossReturnComments';
 import { generatePlatformComment, getPlatformName } from '@/data/templates/platformComments';
+import { 
+  getRandomQuitComment, 
+  getRandomReturnComment as getNewReturnComment, 
+  getRandomRecommendationComment,
+  getRandomPlatform,
+  type CommentType as PlayerStateCommentType
+} from '@/data/commentTemplates';
 import type { Player } from './playerStore';
 import { useSimulationStore } from './simulationStore';
 
@@ -250,6 +257,113 @@ export const useCommentStore = defineStore('comment', () => {
     comment.heat = calculateCommentHeat(comment);
     
     // 添加到评论列表
+    comments.value.unshift(comment);
+    
+    // 更新舆情
+    updatePublicOpinion();
+    saveToLocal();
+  }
+
+  /**
+   * 生成退坑评论（玩家流失时触发）- 1-3条
+   * @param playerId 玩家ID
+   */
+  function generateQuitComments(playerId: string): void {
+    const count = Math.floor(Math.random() * 3) + 1; // 1-3条
+    
+    for (let i = 0; i < count; i++) {
+      const template = getRandomQuitComment();
+      const platform = getRandomPlatform();
+      
+      const comment: GameComment = {
+        id: `quit_${playerId}_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
+        content: template.content,
+        type: 'roast',
+        sentiment: 'negative',
+        playerType: '休闲玩家',
+        platform: platform as any,
+        tags: template.tags,
+        likes: Math.floor(Math.random() * 50),
+        shares: Math.floor(Math.random() * 20),
+        comments: Math.floor(Math.random() * 10),
+        heat: 0,
+        createdAt: new Date().toISOString(),
+        isLiked: false
+      };
+      
+      // 计算热度
+      comment.heat = calculateCommentHeat(comment);
+      comments.value.unshift(comment);
+    }
+    
+    // 更新舆情
+    updatePublicOpinion();
+    saveToLocal();
+  }
+
+  /**
+   * 生成真香评论（玩家回归时触发）- 1-2条
+   * @param playerId 玩家ID
+   */
+  function generateReturnComments(playerId: string): void {
+    const count = Math.floor(Math.random() * 2) + 1; // 1-2条
+    
+    for (let i = 0; i < count; i++) {
+      const template = getNewReturnComment();
+      const platform = getRandomPlatform();
+      
+      const comment: GameComment = {
+        id: `return_${playerId}_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`,
+        content: template.content,
+        type: 'recommend',
+        sentiment: 'positive',
+        playerType: '休闲玩家',
+        platform: platform as any,
+        tags: template.tags,
+        likes: Math.floor(Math.random() * 100) + 50,
+        shares: Math.floor(Math.random() * 30) + 10,
+        comments: Math.floor(Math.random() * 20) + 5,
+        heat: 0,
+        createdAt: new Date().toISOString(),
+        isLiked: false
+      };
+      
+      // 计算热度
+      comment.heat = calculateCommentHeat(comment);
+      comments.value.unshift(comment);
+    }
+    
+    // 更新舆情
+    updatePublicOpinion();
+    saveToLocal();
+  }
+
+  /**
+   * 生成安利评论（付费玩家30%概率触发）
+   * @param playerId 玩家ID
+   */
+  function generateRecommendationComments(playerId: string): void {
+    const template = getRandomRecommendationComment();
+    const platform = getRandomPlatform();
+    
+    const comment: GameComment = {
+      id: `recommend_${playerId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      content: template.content,
+      type: 'recommend',
+      sentiment: 'positive',
+      playerType: '氪金大佬',
+      platform: platform as any,
+      tags: template.tags,
+      likes: Math.floor(Math.random() * 200) + 100,
+      shares: Math.floor(Math.random() * 50) + 20,
+      comments: Math.floor(Math.random() * 30) + 10,
+      heat: 0,
+      createdAt: new Date().toISOString(),
+      isLiked: false
+    };
+    
+    // 计算热度
+    comment.heat = calculateCommentHeat(comment);
     comments.value.unshift(comment);
     
     // 更新舆情
@@ -843,6 +957,9 @@ export const useCommentStore = defineStore('comment', () => {
     clearAllComments,
     saveToLocal,
     loadFromLocal,
-    initDefaultComments
+    initDefaultComments,
+    generateQuitComments,
+    generateReturnComments,
+    generateRecommendationComments
   };
 });
