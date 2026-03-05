@@ -38,7 +38,7 @@
           size="small"
           round
           color="linear-gradient(to right, #FF69B4, #FFB6C1)"
-          @click="$router.push('/creator')"
+          @click="$router.push('/creator/character')"
         >
           去创建游戏
         </van-button>

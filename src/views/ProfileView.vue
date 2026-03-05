@@ -54,6 +54,18 @@
         </template>
       </van-cell>
       
+      <van-cell title="创建新公司" is-link to="/company-setup">
+        <template #icon>
+          <van-icon name="add-o" class="menu-icon" color="#07c160" />
+        </template>
+      </van-cell>
+      
+      <van-cell title="关于我们" is-link to="/about">
+        <template #icon>
+          <van-icon name="info-o" class="menu-icon" color="#1989fa" />
+        </template>
+      </van-cell>
+      
       <van-cell title="设置" is-link>
         <template #icon>
           <van-icon name="setting-o" class="menu-icon" color="#666" />

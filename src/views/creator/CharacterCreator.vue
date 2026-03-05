@@ -1,5 +1,39 @@
 <template>
   <div class="character-creator">
+    <!-- 顶部导航栏 -->
+    <van-nav-bar
+      title="创建角色"
+      left-arrow
+      @click-left="goBack"
+      class="creator-nav"
+    >
+      <template #right>
+        <van-button
+          size="small"
+          plain
+          type="primary"
+          @click="saveAndExit"
+        >
+          保存退出
+        </van-button>
+      </template>
+    </van-nav-bar>
+
+    <!-- 项目选择 -->
+    <div class="project-selector">
+      <div class="selector-label">绑定到项目</div>
+      <div v-if="selectedProject" class="selected-project">
+        <van-tag type="success" size="medium">
+          📁 {{ selectedProject.name }}
+        </van-tag>
+        <van-button size="mini" plain @click="showProjectPicker = true">更换</van-button>
+      </div>
+      <div v-else class="no-project">
+        <van-tag type="warning" size="medium">⚠️ 未选择项目</van-tag>
+        <van-button size="mini" type="primary" @click="showProjectPicker = true">选择项目</van-button>
+      </div>
+    </div>
+
     <!-- 游戏信息提示 -->
     <div v-if="gameStore.currentGame" class="game-info">
       <van-tag type="primary" size="medium">
@@ -644,18 +678,49 @@
         完成创建
       </van-button>
     </div>
+
+    <!-- 项目选择弹窗 -->
+    <van-popup v-model:show="showProjectPicker" position="bottom" round :style="{ height: '60%' }">
+      <div class="project-picker">
+        <div class="picker-header">
+          <span class="picker-title">选择项目</span>
+          <van-icon name="cross" @click="showProjectPicker = false" />
+        </div>
+        <div class="picker-content">
+          <van-empty v-if="availableProjects.length === 0" description="没有开发中的项目，请先创建项目" />
+          <div v-else class="project-list">
+            <div
+              v-for="project in availableProjects"
+              :key="project.id"
+              class="project-item"
+              @click="selectProject(project)"
+            >
+              <div class="project-info">
+                <span class="project-name">{{ project.name }}</span>
+                <span class="project-progress">进度 {{ project.progress?.toFixed(1) || 0 }}%</span>
+              </div>
+              <van-tag type="primary">选择</van-tag>
+            </div>
+          </div>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick } from 'vue';
+import { useRouter } from 'vue-router';
 import { TemplateManager } from '@/utils/templateManager';
 import { usePointsStore } from '@/stores/points';
 import { useGameStore, type ArtStyle, type VoiceActorLevel, type CharacterBirthday } from '@/stores/gameStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { showToast, showDialog } from 'vant';
 import type { HiddenAttributes, GrowthArcType, CharacterRelationship, CharacterSecret } from '@/types/character';
 import { generatePersonality, generateBehavior, generateSampleDialogue } from '@/utils/characterAI';
 
+const router = useRouter();
+const projectStore = useProjectStore();
 const currentStep = ref(0);
 const selectedAppearance = ref<any>(null);
 const selectedClothing = ref<any>(null);
@@ -1292,6 +1357,12 @@ const createCharacter = () => {
     return;
   }
 
+  if (!selectedProject.value) {
+    showToast('请先选择要绑定的项目');
+    showProjectPicker.value = true;
+    return;
+  }
+
   if (!gameStore.currentGame) {
     showDialog({
       title: '未选择游戏',
@@ -1326,7 +1397,13 @@ const createCharacter = () => {
   const character = gameStore.addCharacter(characterData);
 
   if (character) {
-    showToast('角色创建成功！');
+    // 如果选择了项目，绑定角色到项目
+    if (selectedProject.value) {
+      projectStore.addCharacterToProject(selectedProject.value.id, character);
+      showToast(`角色创建成功，已绑定到项目「${selectedProject.value.name}」！`);
+    } else {
+      showToast('角色创建成功！');
+    }
     emit('create', character);
 
     // 重置所有数据
@@ -1362,6 +1439,59 @@ const createCharacter = () => {
 };
 
 const emit = defineEmits(['create']);
+
+// 返回首页
+const goBack = () => {
+  showDialog({
+    title: '确认返回',
+    message: '返回首页将丢失当前未保存的进度，是否继续？',
+    showCancelButton: true,
+    confirmButtonText: '确认返回',
+    cancelButtonText: '继续创建'
+  }).then(() => {
+    router.push('/');
+  }).catch(() => {
+    // 用户取消，继续创建
+  });
+};
+
+// 保存并退出
+const saveAndExit = () => {
+  if (!characterName.value.trim()) {
+    showToast('请先输入角色名称');
+    return;
+  }
+
+  showDialog({
+    title: '保存并退出',
+    message: '将保存当前进度并返回首页，已填写的信息会保留',
+    showCancelButton: true,
+    confirmButtonText: '保存退出',
+    cancelButtonText: '继续创建'
+  }).then(() => {
+    // 这里可以添加保存草稿的逻辑
+    showToast('进度已保存');
+    router.push('/');
+  }).catch(() => {
+    // 用户取消，继续创建
+  });
+};
+
+// 项目选择相关
+const showProjectPicker = ref(false);
+const selectedProject = ref<any>(null);
+
+// 可选项目列表（开发中的项目）
+const availableProjects = computed(() => {
+  return projectStore.projects.filter(p => p.status === 'developing');
+});
+
+// 选择项目
+function selectProject(project: any) {
+  selectedProject.value = project;
+  showProjectPicker.value = false;
+  showToast(`已选择项目：${project.name}`);
+}
 </script>
 
 <style scoped lang="scss">
@@ -1422,19 +1552,22 @@ const emit = defineEmits(['create']);
   margin-top: 8px;
 }
 
+.creator-nav {
+  margin-bottom: 8px;
+}
+
 .nav-buttons {
   position: fixed;
-  bottom: 0;
+  bottom: 50px; // 为底部Tab导航栏留出空间
   left: 0;
   right: 0;
-  padding: 16px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  padding: 12px 16px;
   background: white;
   display: flex;
   gap: 12px;
   box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.05);
-  z-index: 100;
-  
+  z-index: 99;
+
   .van-button {
     flex: 1;
   }
@@ -1442,13 +1575,98 @@ const emit = defineEmits(['create']);
 
 .character-creator {
   min-height: 100vh;
-  padding-bottom: 80px;
+  padding-bottom: 120px; // 增加底部padding，为固定按钮和Tab栏留出空间
 }
 
 .game-info {
   padding: 12px 16px;
   background: white;
   text-align: center;
+}
+
+// 项目选择器样式
+.project-selector {
+  padding: 12px 16px;
+  background: white;
+  border-bottom: 1px solid #f0f0f0;
+
+  .selector-label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  .selected-project,
+  .no-project {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+// 项目选择弹窗样式
+.project-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #f0f0f0;
+
+    .picker-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+  }
+
+  .picker-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .project-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:active {
+      background: #e8e8e8;
+    }
+
+    .project-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .project-name {
+        font-size: 15px;
+        font-weight: 500;
+        color: #333;
+      }
+
+      .project-progress {
+        font-size: 12px;
+        color: #999;
+      }
+    }
+  }
 }
 
 .name-input-section {

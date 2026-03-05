@@ -5,12 +5,18 @@
 // ============ 角色模板 ============
 
 export type CharacterCategory = 
-  | 'president'    // 霸道总裁
-  | 'senior'       // 温柔学长
-  | 'youngmaster'  // 腹黑少爷
-  | 'sunshine'     // 阳光少年
-  | 'elite'        // 高冷精英
-  | 'other';       // 其他经典人设
+  | 'president'           // 霸道总裁
+  | 'senior'              // 温柔学长
+  | 'youngmaster'         // 腹黑少爷
+  | 'younger_brother'     // 腹黑弟弟/年下
+  | 'sunshine'            // 阳光少年
+  | 'sunshine_sports'     // 阳光运动型
+  | 'elite'               // 高冷精英
+  | 'cold_god'            // 高冷男神
+  | 'mysterious_transfer' // 神秘转学生
+  | 'childhood_sweetheart'// 青梅竹马
+  | 'yandere_artist'      // 病娇艺术家
+  | 'other';              // 其他经典人设
 
 export type VoiceActorLevel = '新人' | '资深' | '顶流';
 

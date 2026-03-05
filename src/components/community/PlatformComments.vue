@@ -44,7 +44,7 @@
         <span class="stat-label">条评论</span>
       </div>
       <div class="stat-item">
-        <van-tag :color="platformColorMap[currentPlatform]" size="medium">
+        <van-tag :color="platformColorMap[activePlatform]" size="medium">
           {{ currentPlatformLabel }}
         </van-tag>
       </div>
@@ -63,14 +63,14 @@
             v-for="comment in displayComments"
             :key="comment.id"
             class="comment-card"
-            :style="{ borderColor: platformColorMap[currentPlatform] + '20' }"
+            :style="{ borderColor: platformColorMap[activePlatform] + '20' }"
           >
             <!-- 评论内容 -->
             <div class="comment-content">
               <p class="text">
-                <span class="platform-emoji">{{ getPlatformEmoji(currentPlatform) }}</span>
+                <span class="platform-emoji">{{ getPlatformEmoji(activePlatform) }}</span>
                 {{ comment.content }}
-                <span class="platform-emoji">{{ getPlatformEmoji(currentPlatform) }}</span>
+                <span class="platform-emoji">{{ getPlatformEmoji(activePlatform) }}</span>
               </p>
             </div>
 
@@ -80,8 +80,8 @@
                 v-for="tag in comment.tags"
                 :key="tag"
                 plain
-                :color="platformColorMap[currentPlatform] + '10'"
-                :text-color="platformColorMap[currentPlatform]"
+                :color="platformColorMap[activePlatform] + '10'"
+                :text-color="platformColorMap[activePlatform]"
                 size="mini"
                 class="tag"
               >
@@ -106,20 +106,20 @@
               <div class="action-item" @click="handleLike(comment)">
                 <van-icon 
                   :name="comment.isLiked ? 'like' : 'like-o'" 
-                  :color="comment.isLiked ? platformColorMap[currentPlatform] : platformColorMap[currentPlatform]" 
+                  :color="comment.isLiked ? platformColorMap[activePlatform] : platformColorMap[activePlatform]" 
                 />
                 <span class="action-text">{{ comment.likes }}</span>
               </div>
               <div class="action-item" @click="handleShare(comment)">
-                <van-icon name="share-o" :color="platformColorMap[currentPlatform]" />
+                <van-icon name="share-o" :color="platformColorMap[activePlatform]" />
                 <span class="action-text">{{ comment.shares }}</span>
               </div>
               <div class="action-item" @click="handleComment(comment)">
-                <van-icon name="comment-o" :color="platformColorMap[currentPlatform]" />
+                <van-icon name="comment-o" :color="platformColorMap[activePlatform]" />
                 <span class="action-text">{{ comment.comments }}</span>
               </div>
               <div class="action-item">
-                <van-icon name="star-o" :color="platformColorMap[currentPlatform]" />
+                <van-icon name="star-o" :color="platformColorMap[activePlatform]" />
                 <span class="action-text">{{ formatNumber(comment.heat) }}</span>
               </div>
             </div>

@@ -4,13 +4,13 @@
  */
 
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { CommentType, CommentSentiment, PlayerType, CommentTemplate } from '@/types/template';
 import { generateComment, generateComments, getRandomPlayerType, getRandomCommentType } from '@/data/templates/comments';
-import { usePointsStore } from './points';
-import { useGameStore } from './gameStore';
 import { getRandomLossComment, getRandomReturnComment } from '@/data/templates/lossReturnComments';
+import { generatePlatformComment, getPlatformName } from '@/data/templates/platformComments';
 import type { Player } from './playerStore';
+import { useSimulationStore } from './simulationStore';
 
 // 平台类型
 export type PlatformType = 'douyin' | 'xiaohongshu' | 'weibo' | 'bilibili' | 'tieba';
@@ -72,27 +72,89 @@ export interface GenerateParams {
 }
 
 export const useCommentStore = defineStore('comment', () => {
-  const pointsStore = usePointsStore();
+  // 引入 simulationStore
+  const simulationStore = useSimulationStore();
   
-  // State
+  // State - store 延迟初始化
   const comments = ref<GameComment[]>([]);
   const rhythmEvents = ref<RhythmEvent[]>([]);
-  const publicOpinion = ref<PublicOpinion>({
-    heat: 0,
-    sentiment: 0,
-    trend: 'stable',
-    triggers: []
+  
+  // 从 simulationStore 获取舆情数据
+  const publicOpinion = computed<PublicOpinion>(() => ({
+    heat: simulationStore.commentMetrics?.heat || 0,
+    sentiment: simulationStore.commentMetrics?.sentiment || 0,
+    trend: (simulationStore.commentMetrics?.sentiment || 0) > 10 ? 'up' : 
+           (simulationStore.commentMetrics?.sentiment || 0) < -10 ? 'down' : 'stable',
+    triggers: simulationStore.platformStatistics ? 
+      Object.entries(simulationStore.platformStatistics.sentimentDistribution)
+        .filter(([_, count]) => count > 0)
+        .map(([sentiment]) => sentiment) : []
+  }));
+  
+  // 从 simulationStore 获取情感统计
+  const sentimentStats = computed<SentimentStats>(() => {
+    const stats = simulationStore.platformStatistics;
+    const total = stats ? stats.sentimentDistribution.positive + stats.sentimentDistribution.neutral + stats.sentimentDistribution.negative : 0;
+    return {
+      total: stats?.totalComments || 0,
+      positive: stats?.sentimentDistribution.positive || 0,
+      negative: stats?.sentimentDistribution.negative || 0,
+      neutral: stats?.sentimentDistribution.neutral || 0,
+      satisfaction: 85 + (simulationStore.commentMetrics?.sentiment || 0) * 0.15,
+      hotTags: []
+    };
   });
-  const sentimentStats = ref<SentimentStats>({
-    total: 0,
-    positive: 0,
-    negative: 0,
-    neutral: 0,
-    satisfaction: 85,
-    hotTags: []
-  });
+  
   const isGenerating = ref(false);
   const lastGeneratedAt = ref<string | null>(null);
+  
+  // 监听 simulationStore 的评论变化，同步到本地
+  watch(() => simulationStore.platformComments, (newPlatformComments) => {
+    if (!newPlatformComments || newPlatformComments.length === 0) return;
+    
+    // 将平台评论转换为 GameComment 格式
+    const newComments: GameComment[] = [];
+    newPlatformComments.forEach(platform => {
+      platform.comments.forEach(comment => {
+        const gameComment: GameComment = {
+          id: comment.id,
+          content: comment.content,
+          type: 'game',
+          sentiment: comment.sentiment,
+          playerType: 'casual',
+          platform: mapPlatformToUI(platform.platform),
+          tags: comment.tags,
+          likes: comment.likes,
+          shares: Math.floor(comment.likes * 0.3),
+          comments: Math.floor(comment.likes * 0.1),
+          heat: comment.likes * 2,
+          createdAt: new Date(comment.timestamp).toISOString(),
+          isLiked: false
+        };
+        newComments.push(gameComment);
+      });
+    });
+    
+    // 合并新评论（去重）
+    const existingIds = new Set(comments.value.map(c => c.id));
+    const uniqueNewComments = newComments.filter(c => !existingIds.has(c.id));
+    
+    if (uniqueNewComments.length > 0) {
+      comments.value.unshift(...uniqueNewComments);
+    }
+  }, { deep: true });
+  
+  // 平台映射函数
+  function mapPlatformToUI(platform: string): PlatformType {
+    const mapping: Record<string, PlatformType> = {
+      '抖音': 'douyin',
+      '小红书': 'xiaohongshu',
+      '微博': 'weibo',
+      'B站': 'bilibili',
+      '贴吧': 'tieba'
+    };
+    return mapping[platform] || 'weibo';
+  }
   
   // Getters
   const filteredComments = computed(() => {
@@ -220,16 +282,21 @@ export const useCommentStore = defineStore('comment', () => {
       // 模拟AI生成延迟
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // 生成评论
+      // 生成评论 - 使用平台评论模板
       const newComments: GameComment[] = [];
       for (let i = 0; i < params.count; i++) {
-        const template = generateComment(params.commentType, params.playerType);
         const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
+        const platformTemplate = generatePlatformComment(randomPlatform);
         
         const comment: GameComment = {
-          ...template,
+          id: platformTemplate.id,
+          content: platformTemplate.content,
+          type: params.commentType || getRandomCommentType(),
+          sentiment: platformTemplate.sentiment as CommentSentiment,
+          playerType: params.playerType || getRandomPlayerType(),
+          tags: platformTemplate.tags,
           platform: randomPlatform,
-          likes: Math.floor(Math.random() * 50),
+          likes: platformTemplate.baseLikes + Math.floor(Math.random() * 50),
           shares: Math.floor(Math.random() * 10),
           comments: Math.floor(Math.random() * 20),
           heat: 0,
@@ -281,17 +348,19 @@ export const useCommentStore = defineStore('comment', () => {
     const platforms: PlatformType[] = ['douyin', 'xiaohongshu', 'weibo', 'bilibili', 'tieba'];
     
     for (let i = 0; i < count; i++) {
-      const playerType = getRandomPlayerType();
-      const commentType = getRandomCommentType();
-      const template = generateComment(commentType, playerType);
-      
       // 随机分配平台
       const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
+      const platformTemplate = generatePlatformComment(randomPlatform);
       
       const comment: GameComment = {
-        ...template,
+        id: platformTemplate.id,
+        content: platformTemplate.content,
+        type: getRandomCommentType(),
+        sentiment: platformTemplate.sentiment as CommentSentiment,
+        playerType: getRandomPlayerType(),
+        tags: platformTemplate.tags,
         platform: randomPlatform,
-        likes: Math.floor(Math.random() * 100),
+        likes: platformTemplate.baseLikes + Math.floor(Math.random() * 100),
         shares: Math.floor(Math.random() * 20),
         comments: Math.floor(Math.random() * 30),
         heat: 0,

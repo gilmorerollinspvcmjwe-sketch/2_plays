@@ -4,7 +4,7 @@
  */
 
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { 
   EventType, 
   BudgetLevel, 
@@ -14,10 +14,8 @@ import type {
 } from '@/types/template';
 import { generateRandomIncident } from '@/data/templates/incidents';
 import { getRandomEvent, getEventsByType } from '@/data/templates/events';
-import { usePointsStore } from './points';
-import { usePlayerStore } from './playerStore';
-import { useGameStore } from './gameStore';
 import type { GachaResult } from './playerStore';
+import { useSimulationStore } from './simulationStore';
 
 export interface PoolGachaStats {
   totalDraws: number;
@@ -86,19 +84,51 @@ export interface OperationStats {
 }
 
 export const useOperationStore = defineStore('operation', () => {
-  const pointsStore = usePointsStore();
+  // 引入 simulationStore
+  const simulationStore = useSimulationStore();
   
-  // State
+  // State - 不在这里初始化 store，等使用时再动态导入
   const gachaPools = ref<GachaPool[]>([]);
   const events = ref<GameEvent[]>([]);
   const incidents = ref<OperationIncident[]>([]);
-  const stats = ref<OperationStats>({
-    dailyRevenue: 0,
-    activePlayers: 0,
-    totalDraws: 0,
-    eventParticipation: 0,
-    reputation: 80
-  });
+  
+  // 从 simulationStore 获取运营数据
+  const stats = computed<OperationStats>(() => ({
+    dailyRevenue: simulationStore.operationMetrics?.todayRevenue || 0,
+    activePlayers: simulationStore.operationMetrics?.activePlayers || 0,
+    totalDraws: simulationStore.operationMetrics?.totalDraws || 0,
+    eventParticipation: simulationStore.operationMetrics?.activeEvents || 0,
+    reputation: simulationStore.operationMetrics?.reputation || 80
+  }));
+  
+  // 监听 simulationStore 的事件变化，同步到本地
+  watch(() => simulationStore.recentEvents, (newEvents) => {
+    // 只添加新的事件
+    const existingIds = new Set(incidents.value.map(i => i.id));
+    const newIncidents = newEvents
+      .filter(event => !existingIds.has(event.id))
+      .map(event => ({
+        id: event.id,
+        title: event.title,
+        description: event.description,
+        type: event.type as any,
+        severity: (event.impact > 0.5 ? 'high' : event.impact > 0.2 ? 'medium' : 'low') as any,
+        solutions: event.solutions?.map(s => ({
+          id: s.id,
+          name: s.name,
+          description: s.effect,
+          cost: Math.floor(Math.random() * 1000),
+          reputationImpact: s.impact,
+          risk: (s.impact < 0 ? 'high' : 'low') as any
+        })) || [],
+        status: 'pending' as const,
+        createdAt: new Date().toISOString()
+      }));
+    
+    if (newIncidents.length > 0) {
+      incidents.value.unshift(...newIncidents);
+    }
+  }, { deep: true });
   
   // Getters
   const ongoingPools = computed(() => 
@@ -579,22 +609,12 @@ export const useOperationStore = defineStore('operation', () => {
   /**
    * 模拟一天运营
    */
-  function simulateOneDay(): void {
-    // 随机生成收入
-    const baseRevenue = Math.floor(Math.random() * 5000) + 1000;
-    const eventBonus = ongoingEvents.value.length * 1000;
-    stats.value.dailyRevenue = baseRevenue + eventBonus;
-    
-    // 随机生成活跃玩家
-    stats.value.activePlayers = Math.floor(Math.random() * 500) + 500;
-    
-    // 随机生成抽卡次数
-    stats.value.totalDraws += Math.floor(Math.random() * 100);
-    
-    // 随机触发事件 (30%概率)
-    if (Math.random() < 0.3) {
-      triggerRandomIncident();
+  async function simulateOneDay(): Promise<void> {
+    // 调用 simulationStore 的 tick 方法
+    if (!simulationStore.isInitialized) {
+      await simulationStore.initialize();
     }
+    await simulationStore.tick();
     
     // 检查卡池和活动状态
     updatePoolAndEventStatus();

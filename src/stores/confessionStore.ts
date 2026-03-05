@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { usePointsStore } from './points';
 import { useGameStore } from './gameStore';
+import { useSimulationStore } from './simulationStore';
 
 export interface Confession {
   id: string;
@@ -18,8 +19,63 @@ export interface Confession {
 }
 
 export const useConfessionStore = defineStore('confession', () => {
-  const confessions = ref<Confession[]>([]);
+  // 引入 simulationStore
+  const simulationStore = useSimulationStore();
+  
+  // 本地存储用户发布的告白
+  const userConfessions = ref<Confession[]>([]);
   const hotThreshold = 100;
+  
+  // 从 simulationStore 获取模拟告白，并转换格式
+  const simulatedConfessions = computed<Confession[]>(() => {
+    return simulationStore.recentConfessions.map(c => ({
+      id: c.id,
+      characterId: inferCharacterId(c.relatedTags),
+      characterName: inferCharacterName(c.relatedTags),
+      content: c.content,
+      authorId: c.authorId,
+      authorName: c.authorName,
+      likes: c.likes,
+      heat: c.likes * 2,
+      createdAt: new Date(c.timestamp).toISOString(),
+      isHot: c.likes > 50,
+      isLiked: false
+    }));
+  });
+  
+  // 合并模拟告白和用户告白
+  const confessions = computed<Confession[]>(() => {
+    return [...simulatedConfessions.value, ...userConfessions.value]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  });
+  
+  // 辅助函数：从标签推断角色ID
+  function inferCharacterId(tags: string[]): string {
+    const tagToId: Record<string, string> = {
+      '陆沉': 'char_1',
+      '许墨': 'char_2',
+      '白起': 'char_3',
+      '李泽言': 'char_4'
+    };
+    for (const tag of tags) {
+      if (tagToId[tag]) return tagToId[tag];
+    }
+    return 'char_1';
+  }
+  
+  // 辅助函数：从标签推断角色名
+  function inferCharacterName(tags: string[]): string {
+    const tagToName: Record<string, string> = {
+      '陆沉': '霸道总裁 - 陆沉',
+      '许墨': '温柔学长 - 许墨',
+      '白起': '阳光少年 - 白起',
+      '李泽言': '神秘特工 - 李泽言'
+    };
+    for (const tag of tags) {
+      if (tagToName[tag]) return tagToName[tag];
+    }
+    return '霸道总裁 - 陆沉';
+  }
 
   const hotConfessions = computed(() => {
     return confessions.value
@@ -75,7 +131,7 @@ export const useConfessionStore = defineStore('confession', () => {
       isLiked: false
     };
 
-    confessions.value.unshift(confession);
+    userConfessions.value.unshift(confession);
     
     gameStore.updateCharacterPopularity(characterId, { 
       popularity: 1,
@@ -90,7 +146,16 @@ export const useConfessionStore = defineStore('confession', () => {
   }
 
   async function likeConfession(confessionId: string, userId: string): Promise<{ success: boolean; message: string }> {
-    const confession = confessions.value.find(c => c.id === confessionId);
+    // 先查找用户告白
+    let confession = userConfessions.value.find(c => c.id === confessionId);
+    let isUserConfession = true;
+    
+    // 如果不在用户告白中，查找模拟告白
+    if (!confession) {
+      confession = simulatedConfessions.value.find(c => c.id === confessionId);
+      isUserConfession = false;
+    }
+    
     if (!confession) {
       return { success: false, message: '告白不存在' };
     }
@@ -238,17 +303,18 @@ export const useConfessionStore = defineStore('confession', () => {
   }
 
   function deleteConfession(confessionId: string): boolean {
-    const index = confessions.value.findIndex(c => c.id === confessionId);
+    // 只能删除用户告白
+    const index = userConfessions.value.findIndex(c => c.id === confessionId);
     if (index === -1) return false;
     
-    confessions.value.splice(index, 1);
+    userConfessions.value.splice(index, 1);
     saveToLocal();
     return true;
   }
 
   function saveToLocal(): void {
     localStorage.setItem('confession_data', JSON.stringify({
-      confessions: confessions.value
+      userConfessions: userConfessions.value
     }));
   }
 
@@ -257,7 +323,7 @@ export const useConfessionStore = defineStore('confession', () => {
     if (saved) {
       try {
         const data = JSON.parse(saved);
-        confessions.value = data.confessions || [];
+        userConfessions.value = data.userConfessions || [];
       } catch (e) {
         console.error('加载告白数据失败:', e);
       }

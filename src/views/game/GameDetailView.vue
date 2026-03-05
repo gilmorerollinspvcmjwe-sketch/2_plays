@@ -536,7 +536,7 @@ function getRouteLabel(type: string) {
 }
 
 function goToCreator() {
-  router.push('/creator');
+  router.push('/creator/character');
 }
 
 function goToPlot() {

@@ -1,5 +1,20 @@
 <template>
   <div class="plot-designer">
+    <!-- 项目选择 -->
+    <div class="project-selector">
+      <div class="selector-label">绑定到项目</div>
+      <div v-if="selectedProject" class="selected-project">
+        <van-tag type="success" size="medium">
+          📁 {{ selectedProject.name }}
+        </van-tag>
+        <van-button size="mini" plain @click="showProjectPicker = true">更换</van-button>
+      </div>
+      <div v-else class="no-project">
+        <van-tag type="warning" size="medium">⚠️ 未选择项目</van-tag>
+        <van-button size="mini" type="primary" @click="showProjectPicker = true">选择项目</van-button>
+      </div>
+    </div>
+
     <!-- 游戏信息提示 -->
     <div v-if="gameStore.currentGame" class="game-info">
       <van-tag type="primary" size="medium">
@@ -228,6 +243,33 @@
         保存剧情设计
       </van-button>
     </div>
+
+    <!-- 项目选择弹窗 -->
+    <van-popup v-model:show="showProjectPicker" position="bottom" round :style="{ height: '60%' }">
+      <div class="project-picker">
+        <div class="picker-header">
+          <span class="picker-title">选择项目</span>
+          <van-icon name="cross" @click="showProjectPicker = false" />
+        </div>
+        <div class="picker-content">
+          <van-empty v-if="availableProjects.length === 0" description="没有开发中的项目，请先创建项目" />
+          <div v-else class="project-list">
+            <div
+              v-for="project in availableProjects"
+              :key="project.id"
+              class="project-item"
+              @click="selectProject(project)"
+            >
+              <div class="project-info">
+                <span class="project-name">{{ project.name }}</span>
+                <span class="project-progress">进度 {{ project.progress?.toFixed(1) || 0 }}%</span>
+              </div>
+              <van-tag type="primary">选择</van-tag>
+            </div>
+          </div>
+        </div>
+      </div>
+    </van-popup>
   </div>
 </template>
 
@@ -236,6 +278,7 @@ import { ref, computed, watch } from 'vue';
 import { TemplateManager } from '@/utils/templateManager';
 import { usePointsStore } from '@/stores/points';
 import { useGameStore } from '@/stores/gameStore';
+import { useProjectStore } from '@/stores/projectStore';
 import { showToast, showDialog } from 'vant';
 import BranchPreview from '@/components/plot/BranchPreview.vue';
 import { generateQualityReport } from '@/utils/plotAnalyzer';
@@ -250,6 +293,7 @@ const showBranchPreview = ref(false);
 const analysisReport = ref<PlotQualityReport | null>(null);
 const pointsStore = usePointsStore();
 const gameStore = useGameStore();
+const projectStore = useProjectStore();
 
 // 将选中的剧情转换为 PlotBranch 格式
 const plotBranchData = computed<PlotBranch | null>(() => {
@@ -491,6 +535,12 @@ const savePlot = () => {
     return;
   }
   
+  if (!selectedProject.value) {
+    showToast('请先选择要绑定的项目');
+    showProjectPicker.value = true;
+    return;
+  }
+  
   if (!selectedPlot.value) {
     showToast('请先选择剧情模板');
     return;
@@ -516,7 +566,13 @@ const savePlot = () => {
   const plot = gameStore.addPlot(plotData);
   
   if (plot) {
-    showToast('剧情设计已保存！');
+    // 如果选择了项目，绑定剧情到项目
+    if (selectedProject.value) {
+      projectStore.addPlotToProject(selectedProject.value.id, plot);
+      showToast(`剧情保存成功，已绑定到项目「${selectedProject.value.name}」！`);
+    } else {
+      showToast('剧情设计已保存！');
+    }
     emit('save', plot);
     
     // 重置选择
@@ -541,6 +597,22 @@ const analyzePlot = () => {
 const onSelectEnding = (ending: any) => {
   showToast(`已选择结局：${ending.name}`);
 };
+
+// 项目选择相关
+const showProjectPicker = ref(false);
+const selectedProject = ref<any>(null);
+
+// 可选项目列表（开发中的项目）
+const availableProjects = computed(() => {
+  return projectStore.projects.filter(p => p.status === 'developing');
+});
+
+// 选择项目
+function selectProject(project: any) {
+  selectedProject.value = project;
+  showProjectPicker.value = false;
+  showToast(`已选择项目：${project.name}`);
+}
 </script>
 
 <style scoped lang="scss">
@@ -647,6 +719,91 @@ const onSelectEnding = (ending: any) => {
   padding: 12px 16px;
   background: white;
   text-align: center;
+}
+
+// 项目选择器样式
+.project-selector {
+  padding: 12px 16px;
+  background: white;
+  border-bottom: 1px solid #f0f0f0;
+
+  .selector-label {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  .selected-project,
+  .no-project {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+}
+
+// 项目选择弹窗样式
+.project-picker {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .picker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #f0f0f0;
+
+    .picker-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+    }
+  }
+
+  .picker-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .project-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:active {
+      background: #e8e8e8;
+    }
+
+    .project-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .project-name {
+        font-size: 15px;
+        font-weight: 500;
+        color: #333;
+      }
+
+      .project-progress {
+        font-size: 12px;
+        color: #999;
+      }
+    }
+  }
 }
 
 .analysis-section,

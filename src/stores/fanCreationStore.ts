@@ -2,6 +2,7 @@ import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { usePointsStore } from './points';
 import { useGameStore } from './gameStore';
+import { useSimulationStore } from './simulationStore';
 
 export interface FanCreation {
   id: string;
@@ -31,8 +32,46 @@ export const TYPE_NAMES: Record<'fanfic' | 'fanart' | 'emoji', string> = {
   emoji: '表情包'
 };
 
+// 模拟类型到UI类型的映射
+const SIM_TO_UI_TYPE: Record<string, 'fanfic' | 'fanart' | 'emoji'> = {
+  '文稿': 'fanfic',
+  '绘画': 'fanart',
+  '表情包': 'emoji',
+  '视频': 'fanart',
+  '音乐': 'fanfic'
+};
+
 export const useFanCreationStore = defineStore('fanCreation', () => {
-  const creations = ref<FanCreation[]>([]);
+  // 引入 simulationStore
+  const simulationStore = useSimulationStore();
+  
+  // 本地存储用户创作
+  const userCreations = ref<FanCreation[]>([]);
+  
+  // 从 simulationStore 获取模拟同人，并转换格式
+  const simulatedCreations = computed<FanCreation[]>(() => {
+    return simulationStore.recentFanworks.map(f => ({
+      id: f.id,
+      type: SIM_TO_UI_TYPE[f.type] || 'fanfic',
+      characterId: f.relatedCharacters[0] || 'char_1',
+      characterName: f.relatedCharacters[0] || '霸道总裁 - 陆沉',
+      content: f.content,
+      imageUrl: f.type === '绘画' ? `https://picsum.photos/400/300?random=${f.id.slice(-5)}` : undefined,
+      authorId: f.authorId,
+      authorName: f.authorName,
+      likes: f.likes,
+      collections: Math.floor(f.likes * 0.3),
+      createdAt: new Date(f.timestamp).toISOString(),
+      isLiked: false,
+      isCollected: false
+    }));
+  });
+  
+  // 合并模拟创作和用户创作
+  const creations = computed<FanCreation[]>(() => {
+    return [...simulatedCreations.value, ...userCreations.value]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  });
 
   const fanfics = computed(() => {
     return creations.value
@@ -98,7 +137,7 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
       isCollected: false
     };
 
-    creations.value.unshift(creation);
+    userCreations.value.unshift(creation);
     
     gameStore.updateCharacterPopularity(characterId, { 
       popularity: 2,
@@ -113,7 +152,16 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
   }
 
   async function likeCreation(creationId: string, userId: string): Promise<{ success: boolean; message: string }> {
-    const creation = creations.value.find(c => c.id === creationId);
+    // 先查找用户创作
+    let creation = userCreations.value.find(c => c.id === creationId);
+    let isUserCreation = true;
+    
+    // 如果不在用户创作中，查找模拟创作
+    if (!creation) {
+      creation = simulatedCreations.value.find(c => c.id === creationId);
+      isUserCreation = false;
+    }
+    
     if (!creation) {
       return { success: false, message: '作品不存在' };
     }
@@ -142,9 +190,10 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
   }
 
   async function collectCreation(creationId: string): Promise<{ success: boolean; message: string }> {
-    const creation = creations.value.find(c => c.id === creationId);
+    // 只能收藏用户创作
+    const creation = userCreations.value.find(c => c.id === creationId);
     if (!creation) {
-      return { success: false, message: '作品不存在' };
+      return { success: false, message: '作品不存在或无法收藏' };
     }
 
     if (creation.isCollected) {
@@ -249,17 +298,18 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
   }
 
   function deleteCreation(creationId: string): boolean {
-    const index = creations.value.findIndex(c => c.id === creationId);
+    // 只能删除用户创作
+    const index = userCreations.value.findIndex(c => c.id === creationId);
     if (index === -1) return false;
     
-    creations.value.splice(index, 1);
+    userCreations.value.splice(index, 1);
     saveToLocal();
     return true;
   }
 
   function saveToLocal(): void {
     localStorage.setItem('fan_creation_data', JSON.stringify({
-      creations: creations.value
+      userCreations: userCreations.value
     }));
   }
 
@@ -268,7 +318,7 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
     if (saved) {
       try {
         const data = JSON.parse(saved);
-        creations.value = data.creations || [];
+        userCreations.value = data.userCreations || [];
       } catch (e) {
         console.error('加载同人创作数据失败:', e);
       }

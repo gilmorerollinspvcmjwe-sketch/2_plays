@@ -357,6 +357,79 @@
           </van-cell-group>
         </div>
       </van-cell-group>
+
+      <!-- 模拟市场动态 -->
+      <van-cell-group class="simulation-section" inset v-if="isInitialized">
+        <div class="section-header">
+          <van-icon name="coupon" />
+          <span>🔮 模拟市场预测</span>
+          <van-tag type="primary" size="medium">AI模拟</van-tag>
+        </div>
+        <div class="simulation-content">
+          <div v-if="worldImpact" class="world-impact-grid">
+            <div class="impact-item">
+              <span class="impact-label">DAU影响</span>
+              <span class="impact-value" :class="worldImpact.project.dauChange >= 0 ? 'positive' : 'negative'">
+                {{ worldImpact.project.dauChange >= 0 ? '+' : '' }}{{ worldImpact.project.dauChange }}
+              </span>
+            </div>
+            <div class="impact-item">
+              <span class="impact-label">评分影响</span>
+              <span class="impact-value" :class="worldImpact.project.ratingChange >= 0 ? 'positive' : 'negative'">
+                {{ worldImpact.project.ratingChange >= 0 ? '+' : '' }}{{ worldImpact.project.ratingChange.toFixed(1) }}
+              </span>
+            </div>
+            <div class="impact-item">
+              <span class="impact-label">现金影响</span>
+              <span class="impact-value" :class="worldImpact.company.cashChange >= 0 ? 'positive' : 'negative'">
+                {{ worldImpact.company.cashChange >= 0 ? '+' : '' }}{{ worldImpact.company.cashChange }}
+              </span>
+            </div>
+            <div class="impact-item">
+              <span class="impact-label">声誉影响</span>
+              <span class="impact-value" :class="worldImpact.company.reputationChange >= 0 ? 'positive' : 'negative'">
+                {{ worldImpact.company.reputationChange >= 0 ? '+' : '' }}{{ worldImpact.company.reputationChange }}
+              </span>
+            </div>
+          </div>
+          <div class="retention-preview">
+            <div class="retention-title">模拟留存预测</div>
+            <div class="retention-bars">
+              <div class="retention-item">
+                <span class="retention-label">D1</span>
+                <div class="retention-bar">
+                  <div class="retention-fill" :style="{ width: currentRetention.d1 + '%' }"></div>
+                </div>
+                <span class="retention-value">{{ currentRetention.d1 }}%</span>
+              </div>
+              <div class="retention-item">
+                <span class="retention-label">D7</span>
+                <div class="retention-bar">
+                  <div class="retention-fill" :style="{ width: currentRetention.d7 + '%' }"></div>
+                </div>
+                <span class="retention-value">{{ currentRetention.d7 }}%</span>
+              </div>
+              <div class="retention-item">
+                <span class="retention-label">D30</span>
+                <div class="retention-bar">
+                  <div class="retention-fill" :style="{ width: currentRetention.d30 + '%' }"></div>
+                </div>
+                <span class="retention-value">{{ currentRetention.d30 }}%</span>
+              </div>
+            </div>
+          </div>
+          <div v-if="characterPopularity.length > 0" class="character-preview">
+            <div class="character-title">🔥 角色热度预测</div>
+            <div class="character-list">
+              <div v-for="(char, index) in characterPopularity.slice(0, 3)" :key="char.name" class="character-item">
+                <span class="char-rank">{{ index + 1 }}</span>
+                <span class="char-name">{{ char.name }}</span>
+                <span class="char-popularity">{{ char.popularity }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </van-cell-group>
     </div>
 
     <!-- 趋势详情弹窗 -->
@@ -500,6 +573,11 @@ import { ref, computed, onMounted } from 'vue';
 import type { MarketTrend, Competitor, Festival, RevenueForecast, MarketEvent, MarketEnvironment } from '@/types/market';
 import { generateRandomEvent, getActiveEvents, calculateCombinedImpact, eventHistory } from '@/utils/marketEvents';
 import { calculateMarketOpportunity, recommendReleaseTime, predictTrend, assessMarketRisk } from '@/utils/marketPrediction';
+import { useSimulationStore } from '@/stores/simulationStore';
+import { storeToRefs } from 'pinia';
+
+const simulationStore = useSimulationStore();
+const { isInitialized, worldImpact, currentRetention, sentimentDistribution, gachaDistribution, characterPopularity } = storeToRefs(simulationStore);
 
 // 市场趋势数据
 const marketTrends = ref<MarketTrend[]>([
@@ -1678,5 +1756,153 @@ onMounted(() => {
     font-size: 12px;
     color: #666;
   }
+}
+
+.simulation-section {
+  margin-bottom: 12px;
+}
+
+.simulation-content {
+  padding: 16px;
+}
+
+.world-impact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.impact-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px;
+  background: #f7f8fa;
+  border-radius: 8px;
+}
+
+.impact-label {
+  font-size: 12px;
+  color: #969799;
+  margin-bottom: 4px;
+}
+
+.impact-value {
+  font-size: 18px;
+  font-weight: bold;
+
+  &.positive {
+    color: #07c160;
+  }
+
+  &.negative {
+    color: #ee0a24;
+  }
+}
+
+.retention-preview {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+}
+
+.retention-title, .character-title {
+  font-size: 14px;
+  font-weight: bold;
+  color: white;
+  margin-bottom: 12px;
+}
+
+.retention-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.retention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.retention-label {
+  width: 28px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.retention-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.retention-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #48bb78, #68d391);
+  border-radius: 4px;
+}
+
+.retention-value {
+  width: 36px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: bold;
+  color: white;
+}
+
+.character-preview {
+  padding: 12px;
+  background: #f7f8fa;
+  border-radius: 8px;
+}
+
+.character-title {
+  color: #323233;
+  margin-bottom: 8px;
+}
+
+.character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.character-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: white;
+  border-radius: 6px;
+}
+
+.char-rank {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 50%;
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.char-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.char-popularity {
+  font-size: 12px;
+  color: #ff6b6b;
+  font-weight: bold;
 }
 </style>

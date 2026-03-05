@@ -236,6 +236,53 @@
               </template>
             </van-cell>
           </div>
+
+          <!-- 模拟预测数据 -->
+          <div v-if="simulationStore.isInitialized" class="simulation-data-card">
+            <div class="section-header">
+              <h4>🔮 模拟预测数据</h4>
+            </div>
+            <div class="simulation-stats">
+              <div class="sim-stat-item">
+                <span class="sim-label">留存 D1</span>
+                <span class="sim-value">{{ simulationStore.currentRetention.d1 }}%</span>
+              </div>
+              <div class="sim-stat-item">
+                <span class="sim-label">留存 D7</span>
+                <span class="sim-value">{{ simulationStore.currentRetention.d7 }}%</span>
+              </div>
+              <div class="sim-stat-item">
+                <span class="sim-label">留存 D30</span>
+                <span class="sim-value">{{ simulationStore.currentRetention.d30 }}%</span>
+              </div>
+            </div>
+            <div class="sentiment-preview">
+              <span class="sentiment-title">玩家情绪</span>
+              <div class="sentiment-bars">
+                <div class="sentiment-row">
+                  <span class="sentiment-label">正面</span>
+                  <div class="sentiment-bar">
+                    <div class="sentiment-fill positive" :style="{ width: simulationStore.sentimentDistribution.positive + '%' }"></div>
+                  </div>
+                  <span class="sentiment-value">{{ simulationStore.sentimentDistribution.positive }}%</span>
+                </div>
+                <div class="sentiment-row">
+                  <span class="sentiment-label">中性</span>
+                  <div class="sentiment-bar">
+                    <div class="sentiment-fill neutral" :style="{ width: simulationStore.sentimentDistribution.neutral + '%' }"></div>
+                  </div>
+                  <span class="sentiment-value">{{ simulationStore.sentimentDistribution.neutral }}%</span>
+                </div>
+                <div class="sentiment-row">
+                  <span class="sentiment-label">负面</span>
+                  <div class="sentiment-bar">
+                    <div class="sentiment-fill negative" :style="{ width: simulationStore.sentimentDistribution.negative + '%' }"></div>
+                  </div>
+                  <span class="sentiment-value">{{ simulationStore.sentimentDistribution.negative }}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </van-tab>
 
@@ -293,6 +340,12 @@
       <van-tab title="同人广场">
         <div class="tab-content no-padding">
           <FanCreationSquare />
+        </div>
+      </van-tab>
+
+      <van-tab title="市场情报">
+        <div class="tab-content no-padding">
+          <MarketDashboard />
         </div>
       </van-tab>
     </van-tabs>
@@ -440,6 +493,7 @@ import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useOperationStore } from '@/stores/operationStore';
 import { useCommentStore } from '@/stores/commentStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import { useSimulationStore } from '@/stores/simulationStore';
 import { showToast } from 'vant';
 import OperationDashboard from '@/components/operation/OperationDashboard.vue';
 import EventTemplateSelector from '@/components/operation/EventTemplateSelector.vue';
@@ -447,10 +501,12 @@ import IncidentHandler from '@/components/operation/IncidentHandler.vue';
 import GachaSimulator from '@/components/gacha/GachaSimulator.vue';
 import ConfessionWall from '@/components/social/ConfessionWall.vue';
 import FanCreationSquare from '@/components/social/FanCreationSquare.vue';
+import MarketDashboard from '@/components/market/MarketDashboard.vue';
 
 const operationStore = useOperationStore();
 const commentStore = useCommentStore();
 const playerStore = usePlayerStore();
+const simulationStore = useSimulationStore();
 const activeTab = ref(0);
 
 // 自动结算
@@ -1334,6 +1390,108 @@ onUnmounted(() => {
     flex: 1;
     overflow-y: auto;
     padding: 0;
+  }
+}
+
+.simulation-data-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  color: white;
+
+  .section-header {
+    margin-bottom: 12px;
+
+    h4 {
+      margin: 0;
+      font-size: 15px;
+      font-weight: bold;
+    }
+  }
+
+  .simulation-stats {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .sim-stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .sim-label {
+    font-size: 12px;
+    opacity: 0.8;
+  }
+
+  .sim-value {
+    font-size: 20px;
+    font-weight: bold;
+  }
+
+  .sentiment-preview {
+    .sentiment-title {
+      font-size: 13px;
+      opacity: 0.9;
+      display: block;
+      margin-bottom: 8px;
+    }
+  }
+
+  .sentiment-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .sentiment-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sentiment-label {
+    width: 32px;
+    font-size: 11px;
+    opacity: 0.8;
+  }
+
+  .sentiment-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .sentiment-fill {
+    height: 100%;
+    border-radius: 4px;
+  }
+
+  .sentiment-fill.positive {
+    background: linear-gradient(90deg, #48bb78, #68d391);
+  }
+
+  .sentiment-fill.neutral {
+    background: linear-gradient(90deg, #a0aec0, #cbd5e0);
+  }
+
+  .sentiment-fill.negative {
+    background: linear-gradient(90deg, #f56565, #fc8181);
+  }
+
+  .sentiment-value {
+    width: 36px;
+    text-align: right;
+    font-size: 11px;
+    font-weight: bold;
   }
 }
 </style>

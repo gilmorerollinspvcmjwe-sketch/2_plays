@@ -29,20 +29,20 @@
     </main>
 
     <!-- 底部 Tab 导航 -->
-    <van-tabbar v-model="activeTab" route class="tabbar">
-      <van-tabbar-item to="/" icon="home-o">
+    <van-tabbar v-model="activeTab" class="tabbar">
+      <van-tabbar-item @click="goToHome" icon="home-o" :class="{ 'van-tabbar-item--active': route.path === '/' }">
         首页
       </van-tabbar-item>
-      <van-tabbar-item to="/creator" icon="edit">
+      <van-tabbar-item @click="goToCreator" icon="edit" :class="{ 'van-tabbar-item--active': route.path.startsWith('/creator') }">
         开发
       </van-tabbar-item>
-      <van-tabbar-item to="/operation" icon="shop-o">
+      <van-tabbar-item @click="goToOperation" icon="shop-o" :class="{ 'van-tabbar-item--active': route.path === '/operation' }">
         运营
       </van-tabbar-item>
-      <van-tabbar-item to="/comments" icon="comment-o">
+      <van-tabbar-item @click="goToComments" icon="comment-o" :class="{ 'van-tabbar-item--active': route.path === '/comments' }">
         评论
       </van-tabbar-item>
-      <van-tabbar-item to="/profile" icon="user-o">
+      <van-tabbar-item @click="goToProfile" icon="user-o" :class="{ 'van-tabbar-item--active': route.path === '/profile' }">
         我的
       </van-tabbar-item>
     </van-tabbar>
@@ -57,19 +57,38 @@ import { usePointsStore } from '@/stores/points';
 const route = useRoute();
 const router = useRouter();
 const pointsStore = usePointsStore();
-const activeTab = ref(0);
+
+// 根据当前路由计算 activeTab
+const activeTab = computed(() => {
+  const path = route.path;
+  if (path === '/') return 0;
+  if (path.startsWith('/creator')) return 1;
+  if (path === '/operation') return 2;
+  if (path === '/comments') return 3;
+  if (path === '/profile') return 4;
+  return 0;
+});
 
 const pageTitle = computed(() => {
   const titleMap: Record<string, string> = {
     '/': '乙游模拟器',
     '/creator': '游戏开发',
+    '/creator/character': '角色创建',
     '/creator/plot': '剧情设计',
     '/creator/plot/editor': '剧情编辑器',
     '/operation': '游戏运营',
+    '/operation-impact': '运营影响预测',
+    '/linkage-tracker': '联动追踪',
+    '/market-dashboard': '市场情报',
     '/comments': '玩家评论',
     '/profile': '个人中心',
     '/points': '积分商城',
-    '/market': '市场情报'
+    '/market': '市场情报',
+    '/company-setup': '创建公司',
+    '/about': '关于我们',
+    '/achievements': '成就系统',
+    '/character-ranking': '角色价值排行',
+    '/plot-analysis': '剧情分析'
   };
   return titleMap[route.path] || '乙游模拟器';
 });
@@ -81,6 +100,26 @@ const showBack = computed(() => {
 
 const goBack = () => {
   router.back();
+};
+
+const goToHome = () => {
+  router.push('/');
+};
+
+const goToCreator = () => {
+  router.push('/creator');
+};
+
+const goToOperation = () => {
+  router.push('/operation');
+};
+
+const goToComments = () => {
+  router.push('/comments');
+};
+
+const goToProfile = () => {
+  router.push('/profile');
 };
 
 const goToPoints = () => {
