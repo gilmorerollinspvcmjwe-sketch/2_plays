@@ -11,40 +11,51 @@ import {
 } from '@/engine/contentGenerationEngine';
 import { useSimulationStore } from './simulationStore';
 import { useProjectStore } from './projectStore';
+import { useProjectOperationStore } from './projectOperationStore';
 import type { Project } from '@/types/project';
 
 // ==================== 类型定义 ====================
 
-/** 同人作品类型（UI展示用） */
+/** 同人作品类型（统一接口） */
+export type FanworkType = 'fanart' | 'fanfic' | 'video' | 'cos' | 'emoji';
+
+/** 同人作品类型（UI 展示用） */
 export type FanworkUIType = '绘画' | '文稿' | '视频' | 'COS';
+
+/** 同人作品来源 */
+export type FanworkSource = 'user' | 'simulated' | 'generated';
 
 /** 同人作品质量 */
 export type FanworkQuality = '优质' | '普通' | '粗糙';
 
-/** 同人作品接口 */
+/** 同人作品接口（统一） */
 export interface Fanwork {
   id: string;
-  type: FanworkUIType;
+  type: FanworkUIType | FanworkType;
   quality: FanworkQuality;
+  source: FanworkSource;
   title: string;
   content: string;
   authorId: string;
   authorName: string;
   likes: number;
   views: number;
+  collections: number;
+  heat: number;
   createdAt: string;
   isLiked?: boolean;
+  isCollected?: boolean;
   // 关联信息
   projectId?: string;
   projectName?: string;
   characterId?: string;
-  characterName?: string;
-  cpPair?: string[]; // CP角色ID列表
-  cpPairNames?: string[]; // CP角色名称列表
+  characterName: string;
+  cpPair?: string[]; // CP 角色 ID 列表
+  cpPairNames?: string[]; // CP 角色名称列表
   plotId?: string;
   plotTitle?: string;
   tags: string[];
-  // 图片URL（绘画/COS类型使用）
+  // 图片 URL（绘画/COS 类型使用）
   imageUrl?: string;
 }
 
@@ -64,6 +75,19 @@ export const QUALITY_STYLES: Record<FanworkQuality, { color: string; badge: stri
   '优质': { color: '#ff6b6b', badge: '精品' },
   '普通': { color: '#4ecdc4', badge: '普通' },
   '粗糙': { color: '#95a5a6', badge: '新手' },
+};
+
+/** 创作消耗积分映射 */
+export const COST_MAP: Record<FanworkType | FanworkUIType, number> = {
+  'fanfic': 20,
+  'fanart': 50,
+  'video': 80,
+  'cos': 100,
+  'emoji': 10,
+  '绘画': 50,
+  '文稿': 20,
+  '视频': 80,
+  'COS': 100,
 };
 
 // ==================== Store 定义 ====================
@@ -127,6 +151,16 @@ export const useFanworkStore = defineStore('fanwork', () => {
     };
     const total = fanworks.value.reduce((sum, f) => sum + qualityScores[f.quality], 0);
     return total / fanworks.value.length;
+  });
+
+  /** 用户创作的作品 */
+  const userCreations = computed(() => {
+    return fanworks.value.filter(f => f.source === 'user');
+  });
+
+  /** 模拟生成的作品 */
+  const simulatedCreations = computed(() => {
+    return fanworks.value.filter(f => f.source === 'simulated' || f.source === 'generated');
   });
 
   // ==================== 核心方法 ====================
@@ -218,16 +252,17 @@ export const useFanworkStore = defineStore('fanwork', () => {
       })
       .filter((p): p is PlotHeat => p !== null);
 
-    // 构建项目指标
-    const projectData = simulationStore.getProjectOperationData(project.id);
+    // 构建项目指标 - 优先使用新 Store
+    const projectOpStore = useProjectOperationStore();
+    const projectData = projectOpStore.getProjectData(project.id);
     const metrics = {
       ...project.metrics,
-      rating: project.metrics?.rating || (projectData?.satisfaction || 70) / 10,
-      totalPlayers: project.metrics?.totalPlayers || projectData?.activePlayers || 1000,
-      totalRevenue: project.metrics?.totalRevenue || projectData?.totalRevenue || 0,
-      dau: project.metrics?.dau || projectData?.activePlayers || 1000,
-      satisfaction: project.metrics?.satisfaction ?? (projectData?.satisfaction || 0.7) * 100,
-      retention: project.metrics?.retention || {
+      rating: project.metrics?.rating || (projectData?.metrics.satisfaction || 0.7) * 10,
+      totalPlayers: project.metrics?.totalPlayers || projectData?.metrics.dau || 1000,
+      totalRevenue: project.metrics?.totalRevenue || projectData?.metrics.totalRevenue || 0,
+      dau: project.metrics?.dau || projectData?.metrics.dau || 1000,
+      satisfaction: project.metrics?.satisfaction ?? (projectData?.metrics.satisfaction || 0.7) * 100,
+      retention: project.metrics?.retention || projectData?.metrics.retention || {
         d1: 50,
         d7: 30,
         d30: 15,
@@ -242,7 +277,7 @@ export const useFanworkStore = defineStore('fanwork', () => {
       activities: [],
       recentEvents: [],
       daySinceLaunch: simulationStore.currentDay,
-      playerSatisfaction: projectData?.satisfaction || 0.7,
+      playerSatisfaction: projectData?.metrics.satisfaction || 0.7,
     };
   }
 
@@ -273,14 +308,18 @@ export const useFanworkStore = defineStore('fanwork', () => {
       id: generated.id,
       type: typeMap[generated.type],
       quality: qualityMap[generated.quality],
+      source: 'generated' as FanworkSource,
       title: generated.title,
       content: generated.content,
       authorId: generated.playerId,
       authorName: generateAuthorName(),
       likes: generated.likes,
       views: Math.floor(generated.likes * (1 + Math.random() * 2)),
+      collections: Math.floor(generated.likes * 0.3),
+      heat: 0,
       createdAt: new Date(generated.timestamp).toISOString(),
       isLiked: false,
+      isCollected: false,
       projectId: generated.association.projectId,
       projectName: generated.association.projectName,
       characterId: generated.association.characterId,
@@ -344,6 +383,102 @@ export const useFanworkStore = defineStore('fanwork', () => {
 
     saveToLocal();
     return { success: true, message: fanwork.isLiked ? '点赞成功' : '取消点赞' };
+  }
+
+  /**
+   * 收藏/取消收藏
+   */
+  function toggleCollect(fanworkId: string): { success: boolean; message?: string } {
+    const fanwork = fanworks.value.find(f => f.id === fanworkId);
+    if (!fanwork) {
+      return { success: false, message: '作品不存在' };
+    }
+
+    // 切换收藏状态
+    fanwork.isCollected = !fanwork.isCollected;
+    fanwork.collections += fanwork.isCollected ? 1 : -1;
+
+    saveToLocal();
+    return { success: true };
+  }
+
+  /**
+   * 创作同人作品（用户创作）
+   */
+  async function createFanwork(params: {
+    type: FanworkType | FanworkUIType;
+    title: string;
+    content: string;
+    characterId: string;
+    characterName: string;
+    imageUrl?: string;
+    cost: number;
+  }): Promise<{ success: boolean; message?: string; fanwork?: Fanwork }> {
+    const pointsStore = usePointsStore();
+    
+    // 1. 检查积分
+    const pointsResult = await pointsStore.spendPoints(params.cost, '创作同人作品');
+    if (!pointsResult.success) {
+      return { success: false, message: pointsResult.message };
+    }
+
+    // 2. 类型转换
+    const typeMap: Record<string, FanworkUIType> = {
+      'fanart': '绘画',
+      'fanfic': '文稿',
+      'video': '视频',
+      'cos': 'COS',
+      'emoji': '绘画',
+      '绘画': '绘画',
+      '文稿': '文稿',
+      '视频': '视频',
+      'COS': 'COS'
+    };
+    const uiType = typeMap[params.type] || '绘画';
+
+    // 3. 创建作品
+    const fanwork: Fanwork = {
+      id: `fanwork_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      type: uiType,
+      quality: '普通', // 用户创作的默认为普通质量
+      source: 'user',
+      title: params.title,
+      content: params.content,
+      imageUrl: params.imageUrl,
+      tags: [],
+      authorId: 'player',
+      authorName: '玩家',
+      likes: 0,
+      views: 0,
+      collections: 0,
+      heat: 0,
+      isLiked: false,
+      isCollected: false,
+      characterId: params.characterId,
+      characterName: params.characterName,
+      createdAt: new Date().toISOString()
+    };
+
+    // 4. 添加到列表
+    fanworks.value.unshift(fanwork);
+
+    // 5. 更新角色人气
+    const simulationStore = useSimulationStore();
+    simulationStore.updateCharacterPopularity(params.characterId, {
+      popularity: 2,
+      discussionHeat: 10
+    });
+
+    // 6. 解锁成就
+    const userFanworksCount = fanworks.value.filter(f => f.source === 'user').length;
+    if (userFanworksCount === 1) {
+      await pointsStore.unlockAchievement('first_creation');
+    }
+
+    // 7. 持久化
+    saveToLocal();
+
+    return { success: true, fanwork };
   }
 
   /**
@@ -411,14 +546,18 @@ export const useFanworkStore = defineStore('fanwork', () => {
         id: sf.id,
         type: typeMap[sf.type] || '文稿',
         quality: qualityMap[sf.quality] || '普通',
+        source: 'simulated' as FanworkSource,
         title: sf.title,
         content: sf.content,
         authorId: sf.playerId,
         authorName: generateAuthorName(),
         likes: sf.likes,
         views: Math.floor(sf.likes * (1 + Math.random() * 2)),
+        collections: Math.floor(sf.likes * 0.3),
+        heat: 0,
         createdAt: new Date(sf.timestamp).toISOString(),
         isLiked: false,
+        isCollected: false,
         projectId: sf.association.projectId,
         projectName: sf.association.projectName,
         characterId: sf.association.characterId,
@@ -468,6 +607,52 @@ export const useFanworkStore = defineStore('fanwork', () => {
       if (saved) {
         fanworks.value = JSON.parse(saved);
       }
+      
+      // 兼容旧 fanCreationStore 数据
+      const oldRaw = localStorage.getItem('fan_creation_data');
+      if (oldRaw) {
+        const oldData = JSON.parse(oldRaw);
+        const oldCreations = oldData.userCreations || [];
+        
+        // 类型映射
+        const typeMap: Record<string, FanworkUIType> = {
+          'fanfic': '文稿',
+          'fanart': '绘画',
+          'emoji': '绘画',
+          '文稿': '文稿',
+          '绘画': '绘画',
+          '表情包': '绘画'
+        };
+        
+        // 转换为新格式并合并
+        const converted = oldCreations.map((c: any) => ({
+          id: c.id,
+          type: typeMap[c.type] || '绘画',
+          quality: '普通' as FanworkQuality,
+          source: 'user' as FanworkSource,
+          title: c.characterName || '同人作品',
+          content: c.content,
+          imageUrl: c.imageUrl,
+          tags: [],
+          authorId: c.authorId,
+          authorName: c.authorName,
+          likes: c.likes || 0,
+          views: Math.floor((c.likes || 0) * (1 + Math.random() * 2)),
+          collections: c.collections || 0,
+          heat: 0,
+          isLiked: c.isLiked || false,
+          isCollected: c.isCollected || false,
+          characterId: c.characterId,
+          characterName: c.characterName,
+          createdAt: c.createdAt || new Date().toISOString()
+        }));
+        
+        fanworks.value.push(...converted);
+        
+        // 迁移后删除旧 key
+        localStorage.removeItem('fan_creation_data');
+        console.log(`[FanworkStore] 已迁移 ${converted.length} 个旧同人创作数据`);
+      }
     } catch (e) {
       console.error('加载同人数据失败:', e);
     }
@@ -489,11 +674,15 @@ export const useFanworkStore = defineStore('fanwork', () => {
     totalCount,
     totalHeat,
     averageQuality,
+    userCreations,
+    simulatedCreations,
 
     // 方法
     generateFanworks,
     calculateFanworkHeat,
     toggleLike,
+    toggleCollect,
+    createFanwork,
     setFilter,
     getFanworksByCharacter,
     getFanworksByProject,
@@ -502,5 +691,20 @@ export const useFanworkStore = defineStore('fanwork', () => {
     clearFanworks,
     saveToLocal,
     loadFromLocal,
+    
+    // Phase 4: 协调者模式 - onDailyTick
+    onDailyTick(ctx: any) {
+      const projectOpStore = useProjectOperationStore();
+      
+      for (const project of ctx.publishedProjects) {
+        const opData = projectOpStore.getProjectData(project.id);
+        if (!opData) continue;
+        
+        // 检查热度阈值
+        if (opData.metrics.dau > HEAT_THRESHOLD) {
+          generateFanworks(buildGenerationContext());
+        }
+      }
+    },
   };
 });

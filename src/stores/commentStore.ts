@@ -1435,5 +1435,10 @@ export const useCommentStore = defineStore('comment', () => {
     // 新增：情感分布统计
     getSentimentDistributionStats,
     calculateSentimentDistributionFromSimulation,
+    
+    // Phase 4: 协调者模式 - onDailyTick
+    onDailyTick(ctx: any) {
+      generateDailyComments();
+    },
   };
 });

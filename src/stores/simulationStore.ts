@@ -43,6 +43,10 @@ import type {
 import { DailyEventEngine } from '@/engine/dailyEventEngine';
 import type { DailyEvent, DailyEventType } from '@/engine/dailyEventEngine';
 import { seasonEventEngine } from '@/engine/seasonEventEngine';
+import { CompetitorAIEngine, type MarketState, type PlayerCompanyState } from '@/engine/competitorAIEngine';
+import { CompetitorEventEngine } from '@/engine/competitorEventEngine';
+import { COMPETITOR_CONFIGS, getInitialGames } from '@/data/competitorConfig';
+import type { CompetitorAI, CompetitorNews } from '@/types/competitor';
 import {
   checkIncidentTrigger,
   type IncidentTriggerResult
@@ -75,6 +79,8 @@ import { HEAT_THRESHOLD as FANWORK_HEAT_THRESHOLD } from './fanworkStore';
 import { useCommentStore } from './commentStore';
 import { useConfessionStore } from './confessionStore';
 import { useFanworkStore } from './fanworkStore';
+import { useProjectOperationStore, type TickContext } from './projectOperationStore';
+import { useAnalyticsStore } from './analyticsStore';
 
 export interface RetentionData {
   d1: number;
@@ -251,6 +257,29 @@ const FANWORK_HEAT_THRESHOLD = 30;
   const dailyIncidents = ref<IncidentTriggerResult[]>([]);
   const dailyCrises = ref<CrisisTriggerResult[]>([]);
   const activeCrises = ref<Crisis[]>([]);
+
+  // ==================== 竞品AI系统状态 ====================
+  const competitorAIEngine = ref<CompetitorAIEngine | null>(null);
+  const competitorEventEngine = ref<CompetitorEventEngine | null>(null);
+  const competitors = ref<CompetitorAI[]>([]);
+  const competitorNews = ref<CompetitorNews[]>([]);
+  
+  // 初始化竞品AI系统
+  function initCompetitorAI() {
+    competitorAIEngine.value = new CompetitorAIEngine();
+    competitorEventEngine.value = new CompetitorEventEngine();
+    
+    // 初始化6个竞品公司
+    competitors.value = COMPETITOR_CONFIGS.map(config => {
+      const games = getInitialGames(config.id);
+      return {
+        ...config,
+        games,
+      } as CompetitorAI;
+    });
+    
+    console.log(`[CompetitorAI] 已初始化 ${competitors.value.length} 个竞品公司`);
+  }
 
   const isInitialized = computed(() => playerPool.value !== null && engine.value !== null);
 
@@ -1360,6 +1389,9 @@ const FANWORK_HEAT_THRESHOLD = 30;
       worldSimulator.value = new WorldSimulator();
       worldSimulator.value.initialize(1);
 
+      // 初始化竞品AI系统
+      initCompetitorAI();
+
       // Phase 5: 初始化每日事件引擎
       dailyEventEngine.value = new DailyEventEngine();
 
@@ -1655,6 +1687,19 @@ const FANWORK_HEAT_THRESHOLD = 30;
         projectOperationData.value.set(project.id, operationData);
         projectComments.value.set(project.id, comments);
         projectConfessions.value.set(project.id, confessions);
+        
+        // ========== 双写到新 Store ==========
+        const projectOpStore = useProjectOperationStore();
+        projectOpStore.initProjectData(project);
+        projectOpStore.updateProjectMetrics(project.id, {
+          dau: operationData.activePlayers,
+          mau: operationData.activePlayers * 5,
+          retention: operationData.retention,
+          satisfaction: operationData.satisfaction / 100,
+          revenue: operationData.dailyRevenue,
+          totalRevenue: operationData.totalRevenue,
+          rating: operationData.rating,
+        });
 
         projectResults.push({
           projectId: project.id,
@@ -1847,10 +1892,76 @@ const FANWORK_HEAT_THRESHOLD = 30;
       worldImpact.value = impact;
     }
 
+    // ========== 竞品AI决策 ==========
+    if (competitorAIEngine.value && competitorEventEngine.value && competitors.value.length > 0) {
+      const marketState: MarketState = {
+        trendingGenres: ['科幻恋爱', '都市恋爱'],
+        seasonEffect: 0.2,
+        saturation: 0.7,
+        totalMarketSize: 1000000,
+      };
+      
+      const playerState: PlayerCompanyState = {
+        totalPlayers: globalMetrics.value.totalActivePlayers,
+        revenue: globalMetrics.value.totalRevenue,
+        satisfaction: globalMetrics.value.averageSatisfaction,
+        threatLevel: 0.5,
+      };
+      
+      // 每个竞品公司独立决策
+      const actionsMap = new Map<string, AIAction[]>();
+      for (const competitor of competitors.value) {
+        const actions = competitorAIEngine.value.dailyDecision(
+          competitor,
+          marketState,
+          playerState,
+          currentDay.value
+        );
+        actionsMap.set(competitor.id, actions);
+      }
+      
+      // 生成竞品动态消息
+      const news = competitorEventEngine.value.generateCompetitorNews(
+        competitors.value,
+        actionsMap,
+        currentDay.value
+      );
+      
+      // 保留最近20条新闻
+      competitorNews.value = [...competitorNews.value, ...news].slice(-20);
+    }
+
     // 生成平台评论数据
     const commentSim = new CommentSimulator();
     rawPlatformComments.value = commentSim.simulateCommentsForPlayers(sampledPlayers, getCurrentContentTags(), []);
     platformStatistics.value = commentSim.getPlatformStatistics(rawPlatformComments.value);
+    
+    // ========== 双写到 analyticsStore ==========
+    const analyticsStore = useAnalyticsStore();
+    const tickContext: TickContext = {
+      day: currentDay.value,
+      publishedProjects: projectStore.operatingProjects,
+      globalMetrics: {
+        totalPlayers: globalMetrics.value.totalActivePlayers,
+        totalRevenue: globalMetrics.value.totalRevenue,
+        averageSatisfaction: globalMetrics.value.averageSatisfaction,
+      },
+    };
+    analyticsStore.recalculate(tickContext);
+    
+    // ========== Phase 5: 协调者模式 - 调用各子 Store 的 onDailyTick ==========
+    const fanworkStore = useFanworkStore();
+    const commentStoreStore = useCommentStore();
+    const confessionStoreStore = useConfessionStore();
+    
+    // 调用各子 Store 的 onDailyTick 进行内容生成
+    fanworkStore.onDailyTick(tickContext);
+    commentStoreStore.onDailyTick(tickContext);
+    confessionStoreStore.onDailyTick(tickContext);
+    
+    // 调用 projectOperationStore 的 onDailyTick
+    const projectOpStore = useProjectOperationStore();
+    projectOpStore.onDailyTick(tickContext);
 
     // 转换为UI格式
     commentMetrics.value = {
@@ -2350,6 +2461,9 @@ function getHistory(): SimulationResult[] {
     dailyEventEngine,
     triggeredEvents,
     pendingNeutralEvents,
+    // 竞品AI系统导出
+    competitors,
+    competitorNews,
     // 内容生成相关导出
     dailyContentStats,
     contentGenerationHistory,

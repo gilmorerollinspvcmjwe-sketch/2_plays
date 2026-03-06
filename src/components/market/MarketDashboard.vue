@@ -80,7 +80,7 @@
         <div class="section-header">
           <van-icon name="eye-o" />
           <span>竞争对手情报</span>
-          <van-tag type="primary" size="medium">{{ competitors.length }}家</van-tag>
+          <van-tag type="primary" size="medium">{{ competitorList.length }}家</van-tag>
         </div>
         <div class="competitor-list">
           <div
@@ -262,6 +262,34 @@
               </div>
             </div>
           </div>
+        </div>
+      </van-cell-group>
+
+      <!-- 竞品动态 -->
+      <van-cell-group class="competitor-news-section" inset v-if="(competitorNews || []).length > 0">
+        <div class="section-header">
+          <span>🏢</span>
+          <span>竞品动态</span>
+          <van-tag type="warning" size="medium">{{ competitorNews?.length || 0 }}条</van-tag>
+        </div>
+        <div class="news-list">
+          <van-cell
+            v-for="news in (competitorNews || []).slice(-5).reverse()"
+            :key="news.id"
+            :title="news.title"
+            :label="news.content.slice(0, 50) + '...'"
+            :value="`第${news.day}天`"
+            size="small"
+            is-link
+            @click="showCompetitorNewsDetail(news)"
+          >
+            <template #icon>
+              <span class="news-company-avatar">{{ news.companyAvatar }}</span>
+            </template>
+            <template #value>
+              <van-tag :type="getNewsType(news.type)">{{ getNewsTypeText(news.type) }}</van-tag>
+            </template>
+          </van-cell>
         </div>
       </van-cell-group>
 
@@ -572,146 +600,185 @@
 import { ref, computed, onMounted } from 'vue';
 import type { MarketTrend, Competitor, Festival, RevenueForecast, MarketEvent, MarketEnvironment } from '@/types/market';
 import { generateRandomEvent, getActiveEvents, calculateCombinedImpact, eventHistory } from '@/utils/marketEvents';
-import { calculateMarketOpportunity, recommendReleaseTime, predictTrend, assessMarketRisk } from '@/utils/marketPrediction';
 import { useSimulationStore } from '@/stores/simulationStore';
 import { storeToRefs } from 'pinia';
 
 const simulationStore = useSimulationStore();
-const { isInitialized, worldImpact, currentRetention, sentimentDistribution, gachaDistribution, characterPopularity } = storeToRefs(simulationStore);
+const { isInitialized, worldImpact, currentRetention, sentimentDistribution, gachaDistribution, characterPopularity, competitorNews, competitors, worldSimulator, globalMetrics } = storeToRefs(simulationStore);
 
-// 市场趋势数据
-const marketTrends = ref<MarketTrend[]>([
-  {
-    id: '1',
-    name: '古风仙侠',
-    category: 'setting',
-    strength: 8,
-    growthRate: 35,
-    duration: 45,
-    description: '传统古风题材持续升温，仙侠元素深受玩家喜爱',
-    affectedTags: ['古风', '仙侠', '修真'],
-    suggestions: ['增加古风服饰', '融入仙侠剧情', '设计修真系统']
-  },
-  {
-    id: '2',
-    name: '年下弟弟',
-    category: 'character',
-    strength: 9,
-    growthRate: 52,
-    duration: 30,
-    description: '年下弟弟角色人气飙升，姐弟恋题材大受欢迎',
-    affectedTags: ['年下', '弟弟', '姐弟恋'],
-    suggestions: ['设计年下角色', '增加姐弟恋剧情线', '强化弟弟属性']
-  },
-  {
-    id: '3',
-    name: '悬疑推理',
-    category: 'plot',
-    strength: 7,
-    growthRate: 28,
-    duration: 20,
-    description: '悬疑推理剧情受到追捧，玩家喜欢烧脑体验',
-    affectedTags: ['悬疑', '推理', '侦探'],
-    suggestions: ['增加悬疑元素', '设计推理玩法', '加入侦探角色']
-  },
-  {
-    id: '4',
-    name: '职场恋爱',
-    category: 'setting',
-    strength: 6,
-    growthRate: 18,
-    duration: 60,
-    description: '职场恋爱题材稳定受欢迎，贴近现实生活',
-    affectedTags: ['职场', '办公室', '上司'],
-    suggestions: ['设计职场场景', '增加办公室恋情', '加入职场竞争']
-  }
-]);
+// 竞品数据 - 从 simulationStore 获取
+const competitorList = computed(() => {
+  const comps = competitors.value || [];
+  return comps.map((c: any, index: number) => ({
+    id: c.id,
+    name: c.name,
+    rating: c.games?.[0]?.rating || 7,
+    downloads: c.games?.[0]?.dau || 0,
+    revenue: c.games?.[0]?.revenue || 0,
+    tags: c.games?.[0]?.genre ? [c.games[0].genre] : [],
+    strengths: [getPersonalityStrength(c.personality)],
+    weaknesses: [getPersonalityWeakness(c.personality)],
+    threatLevel: c.decisionWeights?.revenue > 0.5 ? 4 : 3,
+    rank: index + 1,
+  }));
+});
 
-// 竞争对手数据
-const competitors = ref<Competitor[]>([
-  {
-    id: '1',
-    name: '恋与制作人',
-    rating: 4.8,
-    downloads: 5000000,
-    revenue: 80000000,
-    tags: ['现代', '职场', '超能力'],
-    strengths: ['剧情质量高', '角色塑造出色', '运营稳定'],
-    weaknesses: ['玩法单一', '更新慢', '氪金点多'],
-    threatLevel: 5,
-    rank: 1
-  },
-  {
-    id: '2',
-    name: '光与夜之恋',
-    rating: 4.6,
-    downloads: 3500000,
-    revenue: 50000000,
-    tags: ['现代', '时尚', '设计师'],
-    strengths: ['美术精美', '音乐优秀', '声优阵容强'],
-    weaknesses: ['剧情拖沓', '活动重复', '福利少'],
-    threatLevel: 4,
-    rank: 2
-  },
-  {
-    id: '3',
-    name: '未定事件簿',
-    rating: 4.5,
-    downloads: 2000000,
-    revenue: 30000000,
-    tags: ['推理', '律师', '悬疑'],
-    strengths: ['推理玩法创新', '剧情逻辑强', '女主独立'],
-    weaknesses: ['门槛较高', '节奏慢', '男性角色少'],
-    threatLevel: 3,
-    rank: 3
-  },
-  {
-    id: '4',
-    name: '时空中的绘旅人',
-    rating: 4.4,
-    downloads: 1500000,
-    revenue: 20000000,
-    tags: ['穿越', '多世界', '画家'],
-    strengths: ['世界观宏大', '穿越设定新颖', '剧情分支多'],
-    weaknesses: ['系统复杂', '新手引导差', '资源获取难'],
-    threatLevel: 3,
-    rank: 4
-  }
-]);
+// 个性化优势
+function getPersonalityStrength(personality: string): string {
+  const map: Record<string, string> = {
+    innovator: '创新能力强',
+    steady: '运营稳定',
+    monetizer: '变现能力强',
+    disruptor: '市场反应快',
+    craftsman: '品质出众',
+    learner: '学习能力强',
+  };
+  return map[personality] || '综合实力强';
+}
 
-// 节日数据
-const festivals = ref<Festival[]>([
-  {
-    id: '1',
-    name: '情人节活动',
-    startDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-    endDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000),
-    description: '浪漫情人节，限定剧情与服装上线',
-    bonusMultiplier: 2.5,
-    specialEvents: ['情人节限定卡池', '约会剧情', '情侣服装'],
-    impact: 'high'
-  },
-  {
-    id: '2',
-    name: '白色情人节',
-    startDate: new Date(Date.now() + 45 * 24 * 60 * 60 * 1000),
-    endDate: new Date(Date.now() + 51 * 24 * 60 * 60 * 1000),
-    description: '回礼之日，特别剧情与道具',
-    bonusMultiplier: 2.0,
-    specialEvents: ['回礼剧情', '限定道具', '双倍掉落'],
-    impact: 'medium'
-  },
-  {
-    id: '3',
-    name: '周年庆典',
-    startDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-    endDate: new Date(Date.now() + 100 * 24 * 60 * 60 * 1000),
-    description: '游戏周年庆，海量福利与活动',
-    bonusMultiplier: 3.0,
-    specialEvents: ['周年限定角色', '登录奖励', '特别剧情'],
-    impact: 'high'
+// 个性化劣势
+function getPersonalityWeakness(personality: string): string {
+  const map: Record<string, string> = {
+    innovator: '风险较高',
+    steady: '创新不足',
+    monetizer: '口碑较差',
+    disruptor: '不稳定',
+    craftsman: '更新较慢',
+    learner: '缺乏特色',
+  };
+  return map[personality] || '暂无明显劣势';
+}
+
+// 市场趋势 - 从 WorldSimulator 获取
+const marketTrends = computed(() => {
+  if (!worldSimulator.value) return [];
+  
+  try {
+    const trends = worldSimulator.value.getGenreTrends();
+    return Array.from(trends.values()).map((t: any) => ({
+      id: t.genreId,
+      name: t.genreName,
+      category: 'genre',
+      strength: t.currentHeat || 5,
+      growthRate: t.growthRate || 10,
+      duration: t.peakDuration || 30,
+      description: t.description || `${t.genreName}题材市场表现良好`,
+      affectedTags: [t.genreName],
+      suggestions: generateSuggestions(t),
+    }));
+  } catch (e) {
+    return [];
   }
-]);
+});
+
+// 生成建议
+function generateSuggestions(t: any): string[] {
+  return [
+    `推出${t.genreName}相关角色`,
+    `设计${t.genreName}剧情`,
+    `${t.genreName}活动可以提升热度`,
+  ];
+}
+
+// 季节热点
+const seasonalHots = computed(() => {
+  if (!worldSimulator.value) return [];
+  try {
+    return worldSimulator.value.getSeasonalHots() || [];
+  } catch (e) {
+    return [];
+  }
+});
+
+// 合并竞品动态到市场动态列表
+const allMarketEvents = computed(() => {
+  const events = [...marketEvents.value];
+  
+  // 添加竞品动态到列表
+  const news = competitorNews.value || [];
+  for (const n of news) {
+    events.unshift({
+      id: n.id,
+      type: 'competitor' as const,
+      title: n.title,
+      content: n.content,
+      day: n.day,
+      impact: n.impact?.marketSentiment || 0,
+      company: n.companyName,
+    });
+  }
+  
+  return events.slice(0, 20);
+});
+
+// 收入预测数据
+const festivals = computed<Festival[]>(() => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const result: Festival[] = [];
+  
+  // 情人节（2月14日）
+  const valentine = new Date(year, 1, 14);
+  if (valentine > now) {
+    result.push({
+      id: 'valentine',
+      name: '情人节活动',
+      startDate: valentine,
+      endDate: new Date(valentine.getTime() + 7 * 24 * 60 * 60 * 1000),
+      description: '浪漫情人节，限定剧情与服装上线',
+      bonusMultiplier: 2.5,
+      specialEvents: ['情人节限定卡池', '约会剧情', '情侣服装'],
+      impact: 'high'
+    });
+  }
+  
+  // 白色情人节（3月14日）
+  const whiteDay = new Date(year, 2, 14);
+  if (whiteDay > now) {
+    result.push({
+      id: 'white_day',
+      name: '白色情人节',
+      startDate: whiteDay,
+      endDate: new Date(whiteDay.getTime() + 7 * 24 * 60 * 60 * 1000),
+      description: '回礼之日，特别剧情与道具',
+      bonusMultiplier: 2.0,
+      specialEvents: ['回礼剧情', '限定道具', '双倍掉落'],
+      impact: 'medium'
+    });
+  }
+  
+  // 五一劳动节
+  const laborDay = new Date(year, 4, 1);
+  if (laborDay > now) {
+    result.push({
+      id: 'labor_day',
+      name: '五一活动',
+      startDate: laborDay,
+      endDate: new Date(laborDay.getTime() + 7 * 24 * 60 * 60 * 1000),
+      description: '劳动节假期活动',
+      bonusMultiplier: 2.0,
+      specialEvents: ['登录奖励', '限时副本', '限定道具'],
+      impact: 'medium'
+    });
+  }
+  
+  // 周年庆（假设为1月1日）
+  const anniversary = new Date(year, 0, 1);
+  if (anniversary > now) {
+    result.push({
+      id: 'anniversary',
+      name: '周年庆典',
+      startDate: anniversary,
+      endDate: new Date(anniversary.getTime() + 10 * 24 * 60 * 60 * 1000),
+      description: '游戏周年庆，海量福利与活动',
+      bonusMultiplier: 3.0,
+      specialEvents: ['周年限定角色', '登录奖励', '特别剧情'],
+      impact: 'high'
+    });
+  }
+  
+  return result;
+});
 
 // 收入预测数据
 const forecast = ref<RevenueForecast>({
@@ -723,31 +790,62 @@ const forecast = ref<RevenueForecast>({
   confidence: 78
 });
 
-// 市场机会
-const opportunities = ref([
-  {
-    id: '1',
-    message: '年下弟弟趋势持续升温，建议推出相关角色',
-    icon: 'fire',
-    color: '#ff6b6b'
-  },
-  {
-    id: '2',
-    message: '情人节活动即将到来，提前准备限定内容',
-    icon: 'gift',
-    color: '#ff69b4'
-  },
-  {
-    id: '3',
-    message: '竞争对手"恋与制作人"近期更新缓慢，是吸引玩家的好时机',
-    icon: 'aim',
-    color: '#4ecdc4'
+// 市场机会 - 从 WorldSimulator 动态生成
+const opportunities = computed(() => {
+  const result: Array<{ id: string; message: string; icon: string; color: string }> = [];
+  
+  // 从市场趋势生成机会
+  const trends = marketTrends.value;
+  if (trends.length > 0) {
+    const topTrend = trends[0];
+    result.push({
+      id: 'trend_1',
+      message: `${topTrend.name}趋势持续升温，建议推出相关角色`,
+      icon: 'fire',
+      color: '#ff6b6b'
+    });
   }
-]);
+  
+  // 从节日数据生成机会
+  const festivalsData = festivals.value;
+  if (festivalsData.length > 0) {
+    const nextFestival = festivalsData[0];
+    result.push({
+      id: 'festival_1',
+      message: `${nextFestival.name}即将到来，提前准备限定内容`,
+      icon: 'gift',
+      color: '#ff69b4'
+    });
+  }
+  
+  // 从竞品动态生成机会
+  const news = competitorNews.value;
+  if (news.length > 0) {
+    const latest = news[news.length - 1];
+    if (latest.impact?.marketSentiment < 0) {
+      result.push({
+        id: 'competitor_1',
+        message: `竞争对手${latest.companyName}遭遇负面评价，是吸引玩家的好时机`,
+        icon: 'aim',
+        color: '#4ecdc4'
+      });
+    }
+  }
+  
+  return result;
+});
 
-// 基础数据
-const activePlayers = ref(1250);
-const marketShare = ref(8.5);
+// 基础数据 - 从 simulationStore 获取
+const activePlayers = computed(() => {
+  return globalMetrics.value.totalActivePlayers || 0;
+});
+
+const marketShare = computed(() => {
+  // 简单计算：玩家DAU / 市场总规模
+  const totalMarketSize = 1000000; // 假设市场规模
+  return ((globalMetrics.value.totalActivePlayers || 0) / totalMarketSize * 100).toFixed(2);
+});
+
 const updateTime = ref('刚刚');
 
 // 市场事件
@@ -755,19 +853,96 @@ const marketEvents = ref<MarketEvent[]>([]);
 const showEventPopup = ref(false);
 const selectedEvent = ref<MarketEvent | null>(null);
 
-// 市场预测
-const marketOpportunity = ref<{
-  overallScore: number;
-  factors: Array<{ name: string; score: number; weight: number }>;
-  analysis: string;
-} | null>(null);
-const releaseRecommendations = ref<Array<{ date: Date; score: number; reason: string }>>([]);
-const trendPrediction = ref<Array<{ date: Date; predictedStrength: number; confidence: number }>>([]);
-const marketRisk = ref<{
-  overallRisk: 'low' | 'medium' | 'high';
-  riskFactors: Array<{ factor: string; level: 'low' | 'medium' | 'high'; description: string }>;
-  mitigationStrategies: string[];
-} | null>(null);
+// 市场预测 - 从 WorldSimulator 和工具函数动态生成
+const marketOpportunity = computed(() => {
+  if (!worldSimulator.value || marketTrends.value.length === 0) return null;
+  
+  const trend = marketTrends.value[0];
+  const score = Math.min(100, Math.round((trend.strength || 5) * 10 + 30));
+  
+  return {
+    overallScore: score,
+    factors: [
+      { name: '市场热度', score: trend.strength || 5, weight: 0.4 },
+      { name: '增长趋势', score: Math.min(10, trend.growthRate || 5), weight: 0.3 },
+      { name: '竞争程度', score: 6, weight: 0.3 },
+    ],
+    analysis: `${trend.name}题材市场表现良好，建议把握窗口期推出相关内容`,
+  };
+});
+
+const releaseRecommendations = computed(() => {
+  const results: Array<{ date: Date; score: number; reason: string }> = [];
+  
+  // 从节日数据生成推荐
+  const nextFestival = festivals.value[0];
+  if (nextFestival) {
+    const festivalDate = new Date(nextFestival.startDate);
+    results.push({
+      date: festivalDate,
+      score: Math.round(nextFestival.bonusMultiplier * 30),
+      reason: `配合${nextFestival.name}活动，可获得${nextFestival.bonusMultiplier}倍收益`,
+    });
+  }
+  
+  // 从市场趋势生成推荐
+  if (marketTrends.value.length > 0) {
+    const trend = marketTrends.value[0];
+    const recommendDate = new Date();
+    recommendDate.setDate(recommendDate.getDate() + 7);
+    results.push({
+      date: recommendDate,
+      score: 70 + (trend.strength || 5),
+      reason: `${trend.name}趋势上升期，推出可获得市场红利`,
+    });
+  }
+  
+  return results.slice(0, 3);
+});
+
+const trendPrediction = computed(() => {
+  const results: Array<{ date: Date; predictedStrength: number; confidence: number }> = [];
+  const trends = marketTrends.value;
+  
+  if (trends.length > 0) {
+    const trend = trends[0];
+    for (let i = 1; i <= 14; i += 3) {
+      const date = new Date();
+      date.setDate(date.getDate() + i);
+      results.push({
+        date,
+        predictedStrength: Math.min(10, (trend.strength || 5) + i * 0.1),
+        confidence: Math.max(50, 90 - i * 3),
+      });
+    }
+  }
+  
+  return results;
+});
+
+const marketRisk = computed(() => {
+  // 基于竞品动态和世界影响评估风险
+  const news = competitorNews.value || [];
+  const recentNegative = news.filter(n => n.impact?.marketSentiment < -5).length;
+  
+  let overallRisk: 'low' | 'medium' | 'high' = 'low';
+  if (recentNegative > 3) overallRisk = 'high';
+  else if (recentNegative > 1) overallRisk = 'medium';
+  
+  return {
+    overallRisk,
+    riskFactors: [
+      { factor: '市场竞争', level: recentNegative > 2 ? 'high' : 'low', description: '竞品活动频繁' },
+      { factor: '市场饱和度', level: 'medium', description: '市场已接近饱和' },
+      { factor: '玩家流失风险', level: 'low', description: '玩家活跃度稳定' },
+    ],
+    mitigationStrategies: [
+      '差异化定位，避免与强势竞品正面竞争',
+      '关注细分市场，寻找蓝海机会',
+      '加强玩家社区运营，提升粘性',
+    ],
+  };
+});
 
 // 市场环境（用于事件生成和预测）
 const marketEnvironment = computed<MarketEnvironment>(() => ({
@@ -788,7 +963,7 @@ const marketHealth = computed(() => {
 });
 
 const sortedCompetitors = computed(() => {
-  return [...competitors.value].sort((a, b) => a.rank - b.rank);
+  return [...competitorList.value].sort((a, b) => a.rank - b.rank);
 });
 
 const upcomingFestivals = computed(() => {
@@ -819,19 +994,9 @@ const refreshData = () => {
   updateMarketPredictions();
 };
 
-// 更新市场预测
+// 更新市场预测 - 现在是 computed，无需手动更新
 const updateMarketPredictions = () => {
-  // 计算市场机会指数
-  marketOpportunity.value = calculateMarketOpportunity(marketEnvironment.value, ['古风', '恋爱']);
-
-  // 获取发布时间推荐
-  releaseRecommendations.value = recommendReleaseTime(marketEnvironment.value, ['古风', '恋爱']);
-
-  // 预测趋势
-  trendPrediction.value = predictTrend(marketTrends.value, 14);
-
-  // 评估市场风险
-  marketRisk.value = assessMarketRisk(marketEnvironment.value, ['古风', '恋爱']);
+  // 市场预测已改为 computed，自动响应变化
 };
 
 // 显示事件详情
@@ -845,6 +1010,55 @@ const getEventImpactColor = (impact: number) => {
   if (impact > 0) return '#07c160';
   if (impact < 0) return '#ff4d4f';
   return '#969799';
+};
+
+// 获取竞品动态类型
+const getNewsType = (type: string): string => {
+  const typeMap: Record<string, string> = {
+    'new_game': 'primary',
+    'major_update': 'success',
+    'gacha_event': 'warning',
+    'scandal': 'danger',
+    'collaboration': 'primary',
+    'price_war': 'danger',
+    'award': 'success',
+    'financial': 'primary',
+    'player_migration': 'warning',
+    'market_shift': 'success',
+  };
+  return typeMap[type] || 'default';
+};
+
+// 获取竞品动态类型文本
+const getNewsTypeText = (type: string): string => {
+  const textMap: Record<string, string> = {
+    'new_game': '新游',
+    'major_update': '大更',
+    'gacha_event': '卡池',
+    'scandal': '丑闻',
+    'collaboration': '联动',
+    'price_war': '价格战',
+    'award': '获奖',
+    'financial': '融资',
+    'player_migration': '流失',
+    'market_shift': '风向',
+  };
+  return textMap[type] || '动态';
+};
+
+// 显示竞品动态详情
+const showCompetitorNewsDetail = (news: any) => {
+  selectedEvent.value = {
+    id: news.id,
+    type: 'competitor' as any,
+    title: news.title,
+    description: news.content,
+    impact: { type: 'neutral' as any, value: news.impact?.marketSentiment || 0 },
+    duration: 1,
+    startTime: new Date().toISOString(),
+    name: news.companyName,
+  };
+  showEventPopup.value = true;
 };
 
 // 获取风险等级样式
@@ -1904,5 +2118,19 @@ onMounted(() => {
   font-size: 12px;
   color: #ff6b6b;
   font-weight: bold;
+}
+
+// 竞品动态
+.competitor-news-section {
+  margin-bottom: 12px;
+}
+
+.news-list {
+  padding: 8px;
+}
+
+.news-company-avatar {
+  font-size: 20px;
+  margin-right: 8px;
 }
 </style>

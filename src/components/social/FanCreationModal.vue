@@ -142,7 +142,7 @@ import { ref, computed } from 'vue';
 import { showToast } from 'vant';
 import { useGameStore } from '@/stores/gameStore';
 import { usePointsStore } from '@/stores/points';
-import { COST_MAP } from '@/stores/fanCreationStore';
+import { COST_MAP } from '@/stores/fanworkStore';
 
 interface Props {
   show: boolean;

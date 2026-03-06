@@ -460,6 +460,13 @@ export const useConfessionStore = defineStore('confession', () => {
     saveToLocal,
     loadFromLocal,
     init,
+    
+    // Phase 4: 协调者模式 - onDailyTick
+    onDailyTick(ctx: any) {
+      if (canGenerateConfession()) {
+        generateConfessions(3);
+      }
+    },
   };
 });
 
