@@ -47,259 +47,336 @@
     </div>
 
     <van-steps :active="currentStep" class="steps">
-      <van-step>外貌</van-step>
-      <van-step>服装</van-step>
-      <van-step>性格</van-step>
-      <van-step>深度设定</van-step>
-      <van-step>成长弧线</van-step>
-      <van-step>美术风格</van-step>
-      <van-step>声优</van-step>
-      <van-step>背景</van-step>
-      <van-step>关系</van-step>
-      <van-step>秘密</van-step>
+      <van-step>基础形象</van-step>
+      <van-step>性格成长</van-step>
+      <van-step>故事背景</van-step>
       <van-step>AI预览</van-step>
-      <van-step>生日</van-step>
+      <van-step>确认创建</van-step>
     </van-steps>
 
-    <!-- Step 1: 外貌选择 -->
+    <!-- Step 1: 基础形象 (合并：外貌+服装+美术风格+生日) -->
     <div v-if="currentStep === 0" class="step-content">
-      <h3 class="step-title">选择外貌特征</h3>
-      <van-cell-group>
-        <van-cell 
-          v-for="option in appearanceOptions" 
-          :key="option.id"
-          :title="option.label"
-          :label="option.description"
-          clickable
-          @click="selectAppearance(option)"
-        >
-          <template #right-icon>
-            <van-icon 
-              v-if="selectedAppearance?.id === option.id" 
-              name="checked" 
-              color="#FF69B4"
-              size="24"
-            />
-          </template>
-        </van-cell>
-      </van-cell-group>
-    </div>
+      <h3 class="step-title">基础形象</h3>
 
-    <!-- Step 2: 服装选择 -->
-    <div v-if="currentStep === 1" class="step-content">
-      <h3 class="step-title">选择服装风格</h3>
-      <van-cell-group>
-        <van-cell 
-          v-for="option in clothingOptions" 
-          :key="option.id"
-          :title="option.label"
-          :label="option.description"
-          clickable
-          @click="selectClothing(option)"
-        >
-          <template #right-icon>
-            <van-icon 
-              v-if="selectedClothing?.id === option.id" 
-              name="checked" 
-              color="#FF69B4"
-              size="24"
-            />
-          </template>
-        </van-cell>
-      </van-cell-group>
-    </div>
-
-    <!-- Step 3: 性格标签 -->
-    <div v-if="currentStep === 2" class="step-content">
-      <h3 class="step-title">选择性格标签（可多选）</h3>
-      <div class="tag-container">
-        <van-checkbox-group v-model="selectedPersonalityTags" direction="horizontal">
-          <van-checkbox 
-            v-for="tag in personalityTags" 
-            :key="tag.id"
-            :name="tag.id"
-            shape="square"
-            class="personality-tag"
+      <div class="subsection">
+        <div class="subsection-title">外貌特征</div>
+        <van-cell-group>
+          <van-cell 
+            v-for="option in appearanceOptions" 
+            :key="option.id"
+            :title="option.label"
+            :label="option.description"
+            clickable
+            @click="selectAppearance(option)"
           >
-            {{ tag.label }}
-          </van-checkbox>
-        </van-checkbox-group>
+            <template #right-icon>
+              <van-icon 
+                v-if="selectedAppearance?.id === option.id" 
+                name="checked" 
+                color="#FF69B4"
+                size="24"
+              />
+            </template>
+          </van-cell>
+        </van-cell-group>
       </div>
-    </div>
 
-    <!-- Step 4: 深度设定 - 隐藏属性 -->
-    <div v-if="currentStep === 3" class="step-content">
-      <h3 class="step-title">深度设定 - 隐藏属性</h3>
-      
-      <!-- 属性冲突提示 -->
-      <van-notice-bar
-        v-if="attributeConflicts.length > 0"
-        :text="attributeConflicts[0]"
-        left-icon="warning-o"
-        color="#ff6b6b"
-        background="#fff5f5"
-        class="conflict-notice"
-      />
-      
-      <!-- 属性雷达图 -->
-      <div class="radar-chart-container">
-        <canvas ref="radarCanvas" width="200" height="200"></canvas>
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">服装风格</div>
+        <van-cell-group>
+          <van-cell 
+            v-for="option in clothingOptions" 
+            :key="option.id"
+            :title="option.label"
+            :label="option.description"
+            clickable
+            @click="selectClothing(option)"
+          >
+            <template #right-icon>
+              <van-icon 
+                v-if="selectedClothing?.id === option.id" 
+                name="checked" 
+                color="#FF69B4"
+                size="24"
+              />
+            </template>
+          </van-cell>
+        </van-cell-group>
       </div>
-      
-      <!-- 属性滑块 -->
-      <div class="attribute-sliders">
-        <div v-for="(attr, key) in hiddenAttributes" :key="key" class="slider-item">
-          <div class="slider-header">
-            <span class="attr-name">{{ attrLabels[key] }}</span>
-            <span class="attr-value">{{ attr }}</span>
+
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">美术风格</div>
+        <div class="art-style-grid">
+          <div 
+            v-for="style in artStyles" 
+            :key="style.id"
+            class="art-style-card"
+            :class="{ active: selectedArtStyle === style.id }"
+            @click="selectedArtStyle = style.id"
+          >
+            <div class="style-icon">{{ style.icon }}</div>
+            <div class="style-name">{{ style.name }}</div>
+            <div class="style-desc">{{ style.description }}</div>
           </div>
-          <van-slider
-            v-model="hiddenAttributes[key]"
-            :min="0"
-            :max="100"
-            :step="5"
-            bar-height="8px"
-            active-color="#FF69B4"
-            @change="drawRadarChart"
-          />
         </div>
       </div>
-    </div>
 
-    <!-- Step 5: 成长弧线 -->
-    <div v-if="currentStep === 4" class="step-content">
-      <h3 class="step-title">选择成长弧线</h3>
-      
-      <div class="growth-arc-grid">
-        <div
-          v-for="arc in growthArcs"
-          :key="arc.id"
-          class="growth-arc-card"
-          :class="{ active: selectedGrowthArc === arc.id }"
-          @click="selectGrowthArc(arc)"
-        >
-          <div class="arc-icon">{{ arc.icon }}</div>
-          <div class="arc-name">{{ arc.name }}</div>
-          <div class="arc-desc">{{ arc.description }}</div>
-        </div>
-      </div>
-      
-      <!-- 成长曲线预览 -->
-      <div v-if="selectedGrowthArc" class="growth-preview">
-        <van-divider>成长曲线预览</van-divider>
-        <div class="growth-curve">
-          <svg viewBox="0 0 300 100" class="curve-svg">
-            <path
-              :d="getGrowthCurvePath()"
-              fill="none"
-              stroke="#FF69B4"
-              stroke-width="3"
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">角色生日 <van-tag size="mini" type="primary" plain>可选</van-tag></div>
+        <div class="birthday-section">
+          <van-button 
+            type="primary" 
+            plain
+            round
+            block
+            @click="randomBirthday"
+            icon="dice"
+            class="random-btn"
+          >
+            随机生成生日
+          </van-button>
+          
+          <van-divider>或手动选择</van-divider>
+          
+          <div class="birthday-selectors">
+            <van-field
+              v-model="selectedMonth"
+              label="月份"
+              placeholder="选择月份"
+              readonly
+              clickable
+              @click="showMonthPicker = true"
+            >
+              <template #right-icon>
+                <van-icon name="arrow-down" />
+              </template>
+            </van-field>
+            
+            <van-field
+              v-model="selectedDay"
+              label="日期"
+              placeholder="选择日期"
+              readonly
+              clickable
+              @click="showDayPicker = true"
+            >
+              <template #right-icon>
+                <van-icon name="arrow-down" />
+              </template>
+            </van-field>
+          </div>
+          
+          <van-popup v-model:show="showMonthPicker" position="bottom" round>
+            <van-picker
+              :columns="monthColumns"
+              @confirm="onMonthConfirm"
+              @cancel="showMonthPicker = false"
             />
-            <circle
-              v-for="(point, index) in growthPoints"
-              :key="index"
-              :cx="point.x"
-              :cy="point.y"
-              r="5"
-              fill="#FF69B4"
+          </van-popup>
+          
+          <van-popup v-model:show="showDayPicker" position="bottom" round>
+            <van-picker
+              :columns="dayColumns"
+              @confirm="onDayConfirm"
+              @cancel="showDayPicker = false"
             />
-          </svg>
-        </div>
-        <van-collapse v-model="activeGrowthNodes">
-          <van-collapse-item title="关键节点" name="1">
-            <div class="growth-nodes">
-              <div v-for="(node, index) in currentGrowthArc?.keyNodes" :key="index" class="growth-node">
-                <van-tag type="primary">节点 {{ index + 1 }}</van-tag>
-                <span class="node-desc">{{ node }}</span>
-              </div>
-            </div>
-          </van-collapse-item>
-        </van-collapse>
-      </div>
-    </div>
-
-    <!-- Step 6: 美术风格选择 -->
-    <div v-if="currentStep === 5" class="step-content">
-      <h3 class="step-title">选择美术风格</h3>
-      <div class="art-style-grid">
-        <div 
-          v-for="style in artStyles" 
-          :key="style.id"
-          class="art-style-card"
-          :class="{ active: selectedArtStyle === style.id }"
-          @click="selectedArtStyle = style.id"
-        >
-          <div class="style-icon">{{ style.icon }}</div>
-          <div class="style-name">{{ style.name }}</div>
-          <div class="style-desc">{{ style.description }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 7: 声优选择 -->
-    <div v-if="currentStep === 6" class="step-content">
-      <h3 class="step-title">选择声优等级</h3>
-      <div class="voice-actor-grid">
-        <div 
-          v-for="actor in voiceActors" 
-          :key="actor.id"
-          class="voice-actor-card"
-          :class="{ active: selectedVoiceActor === actor.id }"
-          @click="selectedVoiceActor = actor.id"
-        >
-          <div class="actor-icon">{{ actor.icon }}</div>
-          <div class="actor-name">{{ actor.name }}</div>
-          <div class="actor-desc">{{ actor.description }}</div>
-          <div class="actor-cost">成本：{{ actor.cost }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Step 8: 背景故事 -->
-    <div v-if="currentStep === 7" class="step-content">
-      <h3 class="step-title">选择背景故事模板</h3>
-      <van-cell-group>
-        <van-cell 
-          v-for="template in backgroundTemplates" 
-          :key="template.id"
-          :title="template.name"
-          :label="template.background?.substring(0, 50) + '...'"
-          clickable
-          @click="selectBackground(template)"
-        >
-          <template #right-icon>
-            <van-icon 
-              v-if="selectedBackground?.id === template.id" 
-              name="checked" 
+          </van-popup>
+          
+          <div class="birthday-preview" v-if="birthdayMonth && birthdayDay">
+            <van-notice-bar
+              left-icon="birthday"
+              background="#FFF5F7"
               color="#FF69B4"
-              size="24"
-            />
-          </template>
-        </van-cell>
-      </van-cell-group>
-      
-      <!-- AI 润色选项 -->
-      <div class="ai-polish-section" v-if="selectedBackground">
-        <van-divider>AI 润色</van-divider>
-        <van-button 
-          type="primary" 
-          block 
-          round
-          @click="aiPolish"
-          :loading="aiLoading"
-          color="linear-gradient(to right, #FF69B4, #FFB6C1)"
-        >
-          <template #icon>
-            <van-icon name="brush-o" />
-          </template>
-          AI 润色背景故事（消耗 30 积分）
-        </van-button>
-        <p class="ai-tip">使用 AI 让背景故事更加生动精彩</p>
+            >
+              🎂 生日：{{ birthdayMonth }}月{{ birthdayDay }}日
+            </van-notice-bar>
+            <p class="birthday-tip">生日当天角色人气 +20%</p>
+          </div>
+        </div>
       </div>
-      
-      <!-- 角色名称输入 -->
-      <div class="name-input-section" v-if="selectedBackground">
-        <van-divider>角色名称</van-divider>
+    </div>
+
+    <!-- Step 2: 性格成长 (合并：性格标签+深度设定+成长弧线) -->
+    <div v-if="currentStep === 1" class="step-content">
+      <h3 class="step-title">性格成长</h3>
+
+      <div class="subsection">
+        <div class="subsection-title">性格标签（可多选）</div>
+        <div class="tag-container">
+          <van-checkbox-group v-model="selectedPersonalityTags" direction="horizontal">
+            <van-checkbox 
+              v-for="tag in personalityTags" 
+              :key="tag.id"
+              :name="tag.id"
+              shape="square"
+              class="personality-tag"
+            >
+              {{ tag.label }}
+            </van-checkbox>
+          </van-checkbox-group>
+        </div>
+      </div>
+
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">深度设定 - 隐藏属性</div>
+        <van-notice-bar
+          v-if="attributeConflicts.length > 0"
+          :text="attributeConflicts[0]"
+          left-icon="warning-o"
+          color="#ff6b6b"
+          background="#fff5f5"
+          class="conflict-notice"
+        />
+        <div class="radar-chart-container">
+          <canvas ref="radarCanvas" width="200" height="200"></canvas>
+        </div>
+        <div class="attribute-sliders">
+          <div v-for="(attr, key) in hiddenAttributes" :key="key" class="slider-item">
+            <div class="slider-header">
+              <span class="attr-name">{{ attrLabels[key] }}</span>
+              <span class="attr-value">{{ attr }}</span>
+            </div>
+            <van-slider
+              v-model="hiddenAttributes[key]"
+              :min="0"
+              :max="100"
+              :step="5"
+              bar-height="8px"
+              active-color="#FF69B4"
+              @change="drawRadarChart"
+            />
+          </div>
+        </div>
+      </div>
+
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">成长弧线</div>
+        <div class="growth-arc-grid">
+          <div
+            v-for="arc in growthArcs"
+            :key="arc.id"
+            class="growth-arc-card"
+            :class="{ active: selectedGrowthArc === arc.id }"
+            @click="selectGrowthArc(arc)"
+          >
+            <div class="arc-icon">{{ arc.icon }}</div>
+            <div class="arc-name">{{ arc.name }}</div>
+            <div class="arc-desc">{{ arc.description }}</div>
+          </div>
+        </div>
+        <div v-if="selectedGrowthArc" class="growth-preview">
+          <van-divider>成长曲线预览</van-divider>
+          <div class="growth-curve">
+            <svg viewBox="0 0 300 100" class="curve-svg">
+              <path
+                :d="getGrowthCurvePath()"
+                fill="none"
+                stroke="#FF69B4"
+                stroke-width="3"
+              />
+              <circle
+                v-for="(point, index) in growthPoints"
+                :key="index"
+                :cx="point.x"
+                :cy="point.y"
+                r="5"
+                fill="#FF69B4"
+              />
+            </svg>
+          </div>
+          <van-collapse v-model="activeGrowthNodes">
+            <van-collapse-item title="关键节点" name="1">
+              <div class="growth-nodes">
+                <div v-for="(node, index) in currentGrowthArc?.keyNodes" :key="index" class="growth-node">
+                  <van-tag type="primary">节点 {{ index + 1 }}</van-tag>
+                  <span class="node-desc">{{ node }}</span>
+                </div>
+              </div>
+            </van-collapse-item>
+          </van-collapse>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: 故事背景 (合并：声优+背景+关系+秘密) -->
+    <div v-if="currentStep === 2" class="step-content">
+      <h3 class="step-title">故事背景</h3>
+
+      <div class="subsection">
+        <div class="subsection-title">声优等级</div>
+        <div class="voice-actor-grid">
+          <div 
+            v-for="actor in voiceActors" 
+            :key="actor.id"
+            class="voice-actor-card"
+            :class="{ active: selectedVoiceActor === actor.id }"
+            @click="selectedVoiceActor = actor.id"
+          >
+            <div class="actor-icon">{{ actor.icon }}</div>
+            <div class="actor-name">{{ actor.name }}</div>
+            <div class="actor-desc">{{ actor.description }}</div>
+            <div class="actor-cost">成本：{{ actor.cost }}</div>
+          </div>
+        </div>
+      </div>
+
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">背景故事模板</div>
+        <van-cell-group>
+          <van-cell 
+            v-for="tmpl in backgroundTemplates" 
+            :key="tmpl.id"
+            :title="tmpl.name"
+            :label="tmpl.background?.substring(0, 50) + '...'"
+            clickable
+            @click="selectBackground(tmpl)"
+          >
+            <template #right-icon>
+              <van-icon 
+                v-if="selectedBackground?.id === tmpl.id" 
+                name="checked" 
+                color="#FF69B4"
+                size="24"
+              />
+            </template>
+          </van-cell>
+        </van-cell-group>
+        
+        <div class="ai-polish-section" v-if="selectedBackground">
+          <van-divider>AI 润色</van-divider>
+          <van-button 
+            type="primary" 
+            block 
+            round
+            @click="aiPolish"
+            :loading="aiLoading"
+            color="linear-gradient(to right, #FF69B4, #FFB6C1)"
+          >
+            <template #icon>
+              <van-icon name="brush-o" />
+            </template>
+            AI 润色背景故事（消耗 30 积分）
+          </van-button>
+          <p class="ai-tip">使用 AI 让背景故事更加生动精彩</p>
+        </div>
+      </div>
+
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">角色名称</div>
         <van-field
           v-model="characterName"
           label="角色名称"
@@ -308,191 +385,189 @@
           show-word-limit
         />
       </div>
-    </div>
 
-    <!-- Step 9: 角色关系编辑 -->
-    <div v-if="currentStep === 8" class="step-content">
-      <h3 class="step-title">角色关系网络</h3>
-      
-      <div class="relationship-list">
-        <van-empty v-if="relationships.length === 0" description="暂无关系，点击添加" />
-        <van-cell-group v-else inset>
-          <van-cell
-            v-for="(rel, index) in relationships"
-            :key="index"
-            :title="rel.targetName"
-            :label="rel.description"
-          >
-            <template #right-icon>
-              <div class="rel-actions">
-                <van-tag :type="getRelationTypeColor(rel.type)">{{ getRelationTypeLabel(rel.type) }}</van-tag>
-                <span class="rel-strength">强度{{ rel.strength }}</span>
-                <van-icon name="delete-o" @click="removeRelationship(index)" />
-              </div>
-            </template>
-          </van-cell>
-        </van-cell-group>
-      </div>
-      
-      <van-button
-        type="primary"
-        block
-        round
-        icon="plus"
-        @click="showAddRelation = true"
-        class="add-relation-btn"
-      >
-        添加关系
-      </van-button>
-      
-      <!-- 添加关系弹窗 -->
-      <van-popup v-model:show="showAddRelation" position="bottom" round :style="{ height: '70%' }">
-        <div class="add-relation-popup">
-          <div class="popup-header">
-            <h4>添加角色关系</h4>
-            <van-icon name="cross" @click="showAddRelation = false" />
-          </div>
-          
-          <van-cell-group inset>
-            <van-field
-              v-model="newRelation.targetName"
-              label="角色名称"
-              placeholder="输入相关角色名称"
-            />
-            
-            <van-cell title="关系类型" is-link @click="showRelationTypePicker = true">
-              <template #value>
-                {{ newRelation.type ? getRelationTypeLabel(newRelation.type) : '请选择' }}
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">角色关系 <van-tag size="mini" type="primary" plain>可选</van-tag></div>
+        <div class="relationship-list">
+          <van-empty v-if="relationships.length === 0" description="暂无关系，点击添加" />
+          <van-cell-group v-else inset>
+            <van-cell
+              v-for="(rel, index) in relationships"
+              :key="index"
+              :title="rel.targetName"
+              :label="rel.description"
+            >
+              <template #right-icon>
+                <div class="rel-actions">
+                  <van-tag :type="getRelationTypeColor(rel.type)">{{ getRelationTypeLabel(rel.type) }}</van-tag>
+                  <span class="rel-strength">强度{{ rel.strength }}</span>
+                  <van-icon name="delete-o" @click="removeRelationship(index)" />
+                </div>
               </template>
             </van-cell>
-            
-            <van-popup v-model:show="showRelationTypePicker" position="bottom" round>
-              <van-picker
-                :columns="relationTypeColumns"
-                @confirm="onRelationTypeConfirm"
-                @cancel="showRelationTypePicker = false"
-              />
-            </van-popup>
-            
-            <van-cell title="关系强度">
-              <template #value>
-                <van-stepper v-model="newRelation.strength" :min="1" :max="10" />
-              </template>
-            </van-cell>
-            
-            <van-field
-              v-model="newRelation.description"
-              label="关系描述"
-              type="textarea"
-              rows="3"
-              placeholder="描述两个角色之间的关系..."
-            />
           </van-cell-group>
-          
-          <div class="popup-actions">
-            <van-button type="primary" block round @click="addRelationship">确认添加</van-button>
-          </div>
         </div>
-      </van-popup>
-    </div>
-
-    <!-- Step 10: 角色秘密设定 -->
-    <div v-if="currentStep === 9" class="step-content">
-      <h3 class="step-title">角色秘密设定</h3>
-      
-      <div class="secret-list">
-        <van-empty v-if="secrets.length === 0" description="暂无秘密，点击添加" />
-        <van-cell-group v-else inset>
-          <van-cell
-            v-for="(secret, index) in secrets"
-            :key="index"
-            :title="getSecretTypeLabel(secret.type)"
-            :label="secret.description"
-          >
-            <template #right-icon>
-              <div class="secret-actions">
-                <van-tag type="warning">{{ getRevealConditionLabel(secret.revealCondition) }}</van-tag>
-                <van-icon name="delete-o" @click="removeSecret(index)" />
-              </div>
-            </template>
-          </van-cell>
-        </van-cell-group>
+        
+        <van-button
+          type="primary"
+          block
+          round
+          icon="plus"
+          @click="showAddRelation = true"
+          class="add-relation-btn"
+        >
+          添加关系
+        </van-button>
+        
+        <van-popup v-model:show="showAddRelation" position="bottom" round :style="{ height: '70%' }">
+          <div class="add-relation-popup">
+            <div class="popup-header">
+              <h4>添加角色关系</h4>
+              <van-icon name="cross" @click="showAddRelation = false" />
+            </div>
+            
+            <van-cell-group inset>
+              <van-field
+                v-model="newRelation.targetName"
+                label="角色名称"
+                placeholder="输入相关角色名称"
+              />
+              
+              <van-cell title="关系类型" is-link @click="showRelationTypePicker = true">
+                <template #value>
+                  {{ newRelation.type ? getRelationTypeLabel(newRelation.type) : '请选择' }}
+                </template>
+              </van-cell>
+              
+              <van-popup v-model:show="showRelationTypePicker" position="bottom" round>
+                <van-picker
+                  :columns="relationTypeColumns"
+                  @confirm="onRelationTypeConfirm"
+                  @cancel="showRelationTypePicker = false"
+                />
+              </van-popup>
+              
+              <van-cell title="关系强度">
+                <template #value>
+                  <van-stepper v-model="newRelation.strength" :min="1" :max="10" />
+                </template>
+              </van-cell>
+              
+              <van-field
+                v-model="newRelation.description"
+                label="关系描述"
+                type="textarea"
+                rows="3"
+                placeholder="描述两个角色之间的关系..."
+              />
+            </van-cell-group>
+            
+            <div class="popup-actions">
+              <van-button type="primary" block round @click="addRelationship">确认添加</van-button>
+            </div>
+          </div>
+        </van-popup>
       </div>
-      
-      <van-button
-        type="primary"
-        block
-        round
-        icon="plus"
-        @click="showAddSecret = true"
-        class="add-secret-btn"
-      >
-        添加秘密
-      </van-button>
-      
-      <!-- 添加秘密弹窗 -->
-      <van-popup v-model:show="showAddSecret" position="bottom" round :style="{ height: '70%' }">
-        <div class="add-secret-popup">
-          <div class="popup-header">
-            <h4>添加角色秘密</h4>
-            <van-icon name="cross" @click="showAddSecret = false" />
-          </div>
-          
-          <van-cell-group inset>
-            <van-cell title="秘密类型" is-link @click="showSecretTypePicker = true">
-              <template #value>
-                {{ newSecret.type ? getSecretTypeLabel(newSecret.type) : '请选择' }}
+
+      <van-divider />
+
+      <div class="subsection">
+        <div class="subsection-title">角色秘密 <van-tag size="mini" type="primary" plain>可选</van-tag></div>
+        <div class="secret-list">
+          <van-empty v-if="secrets.length === 0" description="暂无秘密，点击添加" />
+          <van-cell-group v-else inset>
+            <van-cell
+              v-for="(secret, index) in secrets"
+              :key="index"
+              :title="getSecretTypeLabel(secret.type)"
+              :label="secret.description"
+            >
+              <template #right-icon>
+                <div class="secret-actions">
+                  <van-tag type="warning">{{ getRevealConditionLabel(secret.revealCondition) }}</van-tag>
+                  <van-icon name="delete-o" @click="removeSecret(index)" />
+                </div>
               </template>
             </van-cell>
-            
-            <van-popup v-model:show="showSecretTypePicker" position="bottom" round>
-              <van-picker
-                :columns="secretTypeColumns"
-                @confirm="onSecretTypeConfirm"
-                @cancel="showSecretTypePicker = false"
-              />
-            </van-popup>
-            
-            <van-field
-              v-model="newSecret.description"
-              label="秘密内容"
-              type="textarea"
-              rows="3"
-              placeholder="描述这个秘密的内容..."
-            />
-            
-            <van-cell title="揭示条件" is-link @click="showRevealConditionPicker = true">
-              <template #value>
-                {{ newSecret.revealCondition ? getRevealConditionLabel(newSecret.revealCondition) : '请选择' }}
-              </template>
-            </van-cell>
-            
-            <van-popup v-model:show="showRevealConditionPicker" position="bottom" round>
-              <van-picker
-                :columns="revealConditionColumns"
-                @confirm="onRevealConditionConfirm"
-                @cancel="showRevealConditionPicker = false"
-              />
-            </van-popup>
-            
-            <van-field
-              v-if="newSecret.revealCondition === 'affinity'"
-              v-model="newSecret.revealValue"
-              label="好感度阈值"
-              type="number"
-              placeholder="达到多少好感度时揭示"
-            />
           </van-cell-group>
-          
-          <div class="popup-actions">
-            <van-button type="primary" block round @click="addSecret">确认添加</van-button>
-          </div>
         </div>
-      </van-popup>
+        
+        <van-button
+          type="primary"
+          block
+          round
+          icon="plus"
+          @click="showAddSecret = true"
+          class="add-secret-btn"
+        >
+          添加秘密
+        </van-button>
+        
+        <van-popup v-model:show="showAddSecret" position="bottom" round :style="{ height: '70%' }">
+          <div class="add-secret-popup">
+            <div class="popup-header">
+              <h4>添加角色秘密</h4>
+              <van-icon name="cross" @click="showAddSecret = false" />
+            </div>
+            
+            <van-cell-group inset>
+              <van-cell title="秘密类型" is-link @click="showSecretTypePicker = true">
+                <template #value>
+                  {{ newSecret.type ? getSecretTypeLabel(newSecret.type) : '请选择' }}
+                </template>
+              </van-cell>
+              
+              <van-popup v-model:show="showSecretTypePicker" position="bottom" round>
+                <van-picker
+                  :columns="secretTypeColumns"
+                  @confirm="onSecretTypeConfirm"
+                  @cancel="showSecretTypePicker = false"
+                />
+              </van-popup>
+              
+              <van-field
+                v-model="newSecret.description"
+                label="秘密内容"
+                type="textarea"
+                rows="3"
+                placeholder="描述这个秘密的内容..."
+              />
+              
+              <van-cell title="揭示条件" is-link @click="showRevealConditionPicker = true">
+                <template #value>
+                  {{ newSecret.revealCondition ? getRevealConditionLabel(newSecret.revealCondition) : '请选择' }}
+                </template>
+              </van-cell>
+              
+              <van-popup v-model:show="showRevealConditionPicker" position="bottom" round>
+                <van-picker
+                  :columns="revealConditionColumns"
+                  @confirm="onRevealConditionConfirm"
+                  @cancel="showRevealConditionPicker = false"
+                />
+              </van-popup>
+              
+              <van-field
+                v-if="newSecret.revealCondition === 'affinity'"
+                v-model="newSecret.revealValue"
+                label="好感度阈值"
+                type="number"
+                placeholder="达到多少好感度时揭示"
+              />
+            </van-cell-group>
+            
+            <div class="popup-actions">
+              <van-button type="primary" block round @click="addSecret">确认添加</van-button>
+            </div>
+          </div>
+        </van-popup>
+      </div>
     </div>
 
-    <!-- Step 11: AI人格预览 -->
-    <div v-if="currentStep === 10" class="step-content">
+    <!-- Step 4: AI预览 -->
+    <div v-if="currentStep === 3" class="step-content">
       <h3 class="step-title">AI人格预览</h3>
       
       <van-tabs v-model="activePreviewTab" type="card">
@@ -557,91 +632,23 @@
       </van-button>
     </div>
 
-    <!-- Step 12: 生日设置 -->
-    <div v-if="currentStep === 11" class="step-content">
-      <h3 class="step-title">设置角色生日</h3>
-      
-      <div class="birthday-section">
-        <van-button 
-          type="primary" 
-          plain
-          round
-          block
-          @click="randomBirthday"
-          icon="dice"
-          class="random-btn"
-        >
-          随机生成生日
-        </van-button>
-        
-        <van-divider>或手动选择</van-divider>
-        
-        <div class="birthday-selectors">
-          <van-field
-            v-model="selectedMonth"
-            label="月份"
-            placeholder="选择月份"
-            readonly
-            clickable
-            @click="showMonthPicker = true"
-          >
-            <template #right-icon>
-              <van-icon name="arrow-down" />
-            </template>
-          </van-field>
-          
-          <van-field
-            v-model="selectedDay"
-            label="日期"
-            placeholder="选择日期"
-            readonly
-            clickable
-            @click="showDayPicker = true"
-          >
-            <template #right-icon>
-              <van-icon name="arrow-down" />
-            </template>
-          </van-field>
-        </div>
-        
-        <van-popup v-model:show="showMonthPicker" position="bottom" round>
-          <van-picker
-            :columns="monthColumns"
-            @confirm="onMonthConfirm"
-            @cancel="showMonthPicker = false"
-          />
-        </van-popup>
-        
-        <van-popup v-model:show="showDayPicker" position="bottom" round>
-          <van-picker
-            :columns="dayColumns"
-            @confirm="onDayConfirm"
-            @cancel="showDayPicker = false"
-          />
-        </van-popup>
-        
-        <div class="birthday-preview" v-if="birthdayMonth && birthdayDay">
-          <van-notice-bar
-            left-icon="birthday"
-            background="#FFF5F7"
-            color="#FF69B4"
-          >
-            🎂 生日：{{ birthdayMonth }}月{{ birthdayDay }}日
-          </van-notice-bar>
-          <p class="birthday-tip">生日当天角色人气 +20%</p>
-        </div>
-      </div>
-      
-      <!-- 角色名称输入（如果之前没填） -->
-      <div class="name-input-section">
-        <van-divider>角色名称</van-divider>
-        <van-field
-          v-model="characterName"
-          label="角色名称"
-          placeholder="请输入角色名称"
-          maxlength="20"
-          show-word-limit
-        />
+    <!-- Step 5: 确认创建 -->
+    <div v-if="currentStep === 4" class="step-content">
+      <h3 class="step-title">确认创建</h3>
+      <div class="summary-card">
+        <van-cell-group inset>
+          <van-cell title="角色名称" :value="characterName || '未填写'" />
+          <van-cell title="外貌" :value="selectedAppearance?.label || '未选择'" />
+          <van-cell title="服装" :value="selectedClothing?.label || '未选择'" />
+          <van-cell title="美术风格" :value="artStyles.find(s => s.id === selectedArtStyle)?.name || '未选择'" />
+          <van-cell title="性格标签" :value="selectedPersonalityTags.length > 0 ? personalityTags.filter(t => selectedPersonalityTags.includes(t.id)).map(t => t.label).join('、') : '未选择'" />
+          <van-cell title="成长弧线" :value="currentGrowthArc?.name || '未选择'" />
+          <van-cell title="声优" :value="voiceActors.find(v => v.id === selectedVoiceActor)?.name || '未选择'" />
+          <van-cell title="背景模板" :value="selectedBackground?.name || '未选择'" />
+          <van-cell title="生日" :value="birthdayMonth && birthdayDay ? `${birthdayMonth}月${birthdayDay}日` : '未设置'" />
+          <van-cell title="关系数" :value="relationships.length + ' 个'" />
+          <van-cell title="秘密数" :value="secrets.length + ' 个'" />
+        </van-cell-group>
       </div>
     </div>
 
@@ -657,7 +664,7 @@
         上一步
       </van-button>
       <van-button 
-        v-if="currentStep < 11" 
+        v-if="currentStep < 4" 
         type="primary" 
         @click="currentStep++"
         :disabled="!canNextStep"
@@ -668,7 +675,7 @@
         下一步
       </van-button>
       <van-button 
-        v-if="currentStep === 11" 
+        v-if="currentStep === 4" 
         type="success" 
         @click="createCharacter"
         round
@@ -958,19 +965,20 @@ const attributeConflicts = computed(() => {
 });
 
 const canNextStep = computed(() => {
-  if (currentStep.value === 0) return !!selectedAppearance.value;
-  if (currentStep.value === 1) return !!selectedClothing.value;
-  if (currentStep.value === 2) return selectedPersonalityTags.value.length > 0;
-  if (currentStep.value === 3) return true; // 隐藏属性有默认值
-  if (currentStep.value === 4) return !!selectedGrowthArc.value;
-  if (currentStep.value === 5) return !!selectedArtStyle.value;
-  if (currentStep.value === 6) return !!selectedVoiceActor.value;
-  if (currentStep.value === 7) return !!selectedBackground.value;
-  if (currentStep.value === 8) return true; // 关系可选
-  if (currentStep.value === 9) return true; // 秘密可选
-  if (currentStep.value === 10) return true; // AI预览可选
-  if (currentStep.value === 11) return birthdayMonth.value > 0 && birthdayDay.value > 0;
-  return false;
+  switch (currentStep.value) {
+    case 0: // Basic Image: appearance + clothing + art required, birthday optional
+      return !!selectedAppearance.value && !!selectedClothing.value && !!selectedArtStyle.value;
+    case 1: // Personality: at least one tag + growth arc
+      return selectedPersonalityTags.value.length > 0 && !!selectedGrowthArc.value;
+    case 2: // Story: voice + background + name required, relations/secrets optional
+      return !!selectedVoiceActor.value && !!selectedBackground.value && !!characterName.value.trim();
+    case 3: // AI Preview: always can proceed
+      return true;
+    case 4: // Confirm: always can proceed
+      return true;
+    default:
+      return false;
+  }
 });
 
 const selectAppearance = (option: any) => {
@@ -1354,9 +1362,13 @@ const createCharacter = () => {
     return;
   }
 
+  // Auto-generate birthday if not set
   if (!birthdayMonth.value || !birthdayDay.value) {
-    showToast('请设置角色生日');
-    return;
+    const randomMonth = Math.floor(Math.random() * 12) + 1;
+    const daysInMonth = new Date(2024, randomMonth, 0).getDate();
+    const randomDay = Math.floor(Math.random() * daysInMonth) + 1;
+    birthdayMonth.value = randomMonth;
+    birthdayDay.value = randomDay;
   }
 
   if (!selectedProject.value) {
@@ -1533,6 +1545,24 @@ function selectProject(project: any) {
   color: #333;
   margin-bottom: 16px;
   text-align: center;
+}
+
+.subsection {
+  margin-bottom: 8px;
+}
+
+.subsection-title {
+  font-size: 15px;
+  font-weight: bold;
+  color: #555;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.summary-card {
+  margin-top: 12px;
 }
 
 .tag-container {

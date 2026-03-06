@@ -239,7 +239,6 @@ import { ref, computed, watch, onMounted } from 'vue';
 import { showToast } from 'vant';
 import {
   useFanworkStore,
-  TYPE_NAMES,
   QUALITY_STYLES,
   type Fanwork,
   type FanworkUIType,
@@ -311,11 +310,10 @@ watch(activeTab, () => {
 
 // 监听 store 数据变化
 watch(
-  () => fanworkStore.fanworks,
+  () => currentFanworks.value.length,
   () => {
     loadFanworks();
-  },
-  { deep: true }
+  }
 );
 
 // 点赞
@@ -338,7 +336,8 @@ function getQualityColor(quality: string): string {
 }
 
 // 获取内容摘要
-function getExcerpt(content: string): string {
+function getExcerpt(content?: string): string {
+  if (!content) return '';
   return content.slice(0, 80) + (content.length > 80 ? '...' : '');
 }
 

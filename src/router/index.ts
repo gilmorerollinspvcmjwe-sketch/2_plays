@@ -169,10 +169,13 @@ router.beforeEach((to, from, next) => {
     
     // 如果路由需要无公司状态但用户已有公司
     if (to.meta.requiresNoCompany && companyStore.hasCompany) {
-      next('/home');  // 重定向到首页
+      next('/');  // 重定向到首页
     } else {
       next();
     }
+  }).catch((error) => {
+    console.error('加载 companyStore 失败:', error);
+    next(false);
   });
 });
 

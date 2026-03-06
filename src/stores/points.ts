@@ -297,29 +297,29 @@ export const usePointsStore = defineStore('points', () => {
     const unlockedIds = new Set(unlockedAchievements.value.map(a => a.id));
     
     if (unlockedIds.has('first_game')) {
-      unlockTitle('game_developer');
+      void unlockTitle('game_developer');
     }
     if (unlockedIds.has('popular_game')) {
-      unlockTitle('popular_creator');
+      void unlockTitle('popular_creator');
     }
     if (unlockedIds.has('revenue_1m')) {
-      unlockTitle('millionaire');
+      void unlockTitle('millionaire');
     }
     if (unlockedIds.has('intimacy_max')) {
-      unlockTitle('dating_expert');
+      void unlockTitle('dating_expert');
     }
     if (unlockedIds.has('milestone_master')) {
-      unlockTitle('milestone_hunter');
+      void unlockTitle('milestone_hunter');
     }
     if (unlockedIds.has('birthday_celebrator')) {
-      unlockTitle('birthday_planner');
+      void unlockTitle('birthday_planner');
     }
     if (unlockedIds.has('date_master')) {
-      unlockTitle('date_master');
+      void unlockTitle('date_master');
     }
     
     if (unlockedAchievements.value.length === achievements.value.length) {
-      unlockTitle('legend');
+      void unlockTitle('legend');
     }
   }
 
@@ -421,7 +421,7 @@ export const usePointsStore = defineStore('points', () => {
 
   function resetCheckIn() {
     const lastCheckIn = localStorage.getItem('last_checkin_date');
-    const today = new Date().toDateString();
+    const today = getTodayString();
     
     if (lastCheckIn !== today) {
       checkedInToday.value = false;

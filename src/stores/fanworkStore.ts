@@ -10,11 +10,8 @@ import {
   type PlotHeat,
 } from '@/engine/contentGenerationEngine';
 import { useSimulationStore } from './simulationStore';
-import { useGameStore } from './gameStore';
 import { useProjectStore } from './projectStore';
 import type { Project } from '@/types/project';
-import type { Character } from '@/types/character';
-import type { Plot } from '@/types';
 
 // ==================== 类型定义 ====================
 
@@ -74,7 +71,6 @@ export const QUALITY_STYLES: Record<FanworkQuality, { color: string; badge: stri
 export const useFanworkStore = defineStore('fanwork', () => {
   // 引入其他 store
   const simulationStore = useSimulationStore();
-  const gameStore = useGameStore();
   const projectStore = useProjectStore();
 
   // 同人作品列表
@@ -197,31 +193,27 @@ export const useFanworkStore = defineStore('fanwork', () => {
 
     // 获取项目关联的角色
     const characters: CharacterHeat[] = project.characters
-      .map(id => {
-        const char = gameStore.characters.find(c => c.id === id);
-        if (!char) return null;
+      .map((char) => {
         return {
           characterId: char.id,
           characterName: char.name,
-          popularity: char.popularity?.current || 50,
-          intimacy: char.intimacy?.current || 50,
-          plotPerformance: char.plotPerformance || 50,
-          cpHeat: new Map(), // 简化处理
+          popularity: char.popularity?.popularity || 50,
+          intimacy: char.intimacy?.level ? (char.intimacy.level / 10) * 100 : 50,
+          plotPerformance: char.popularity?.discussionHeat || 50,
+          cpHeat: new Map(Object.entries(char.popularity?.cpHeat || {})),
         };
       })
       .filter((c): c is CharacterHeat => c !== null);
 
     // 获取项目关联的剧情
     const plots: PlotHeat[] = project.plots
-      .map(id => {
-        const plot = gameStore.plots.find(p => p.id === id);
-        if (!plot) return null;
+      .map((plot) => {
         return {
           plotId: plot.id,
           plotTitle: plot.title,
-          heat: plot.heat || 50,
-          sentiment: 'positive',
-          discussionCount: plot.discussionCount || 0,
+          heat: 50,
+          sentiment: 'neutral' as const,
+          discussionCount: 0,
         };
       })
       .filter((p): p is PlotHeat => p !== null);
@@ -229,14 +221,16 @@ export const useFanworkStore = defineStore('fanwork', () => {
     // 构建项目指标
     const projectData = simulationStore.getProjectOperationData(project.id);
     const metrics = {
-      rating: (projectData?.satisfaction || 0.7) * 10,
-      downloads: projectData?.activePlayers || 1000,
-      revenue: projectData?.totalRevenue || 0,
-      activeUsers: projectData?.activePlayers || 1000,
-      retention: {
-        d1: projectData?.retentionRate || 0.5,
-        d7: 0.3,
-        d30: 0.15,
+      ...project.metrics,
+      rating: project.metrics?.rating || (projectData?.satisfaction || 70) / 10,
+      totalPlayers: project.metrics?.totalPlayers || projectData?.activePlayers || 1000,
+      totalRevenue: project.metrics?.totalRevenue || projectData?.totalRevenue || 0,
+      dau: project.metrics?.dau || projectData?.activePlayers || 1000,
+      satisfaction: project.metrics?.satisfaction ?? (projectData?.satisfaction || 0.7) * 100,
+      retention: project.metrics?.retention || {
+        d1: 50,
+        d7: 30,
+        d30: 15,
       },
     };
 

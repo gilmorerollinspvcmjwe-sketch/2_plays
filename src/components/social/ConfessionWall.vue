@@ -164,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { showToast } from 'vant';
 import { useConfessionStore, type Confession } from '@/stores/confessionStore';
 
@@ -178,6 +178,7 @@ const finished = ref(false);
 const refreshing = ref(false);
 const pageSize = 10;
 const currentPage = ref(1);
+const currentUserId = 'local_user';
 
 // ==================== Computed ====================
 const hotConfessions = computed(() => confessionStore.hotConfessions);
@@ -233,7 +234,7 @@ function onRefresh() {
  * 点赞/取消点赞
  */
 async function handleLike(confession: Confession) {
-  const result = await confessionStore.likeConfession(confession.id, 'user_1');
+  const result = await confessionStore.likeConfession(confession.id, currentUserId);
   if (result.success) {
     showToast(result.message);
   }
@@ -271,6 +272,10 @@ function formatTime(dateString: string): string {
 onMounted(() => {
   loadConfessions();
 });
+
+watch(allConfessions, () => {
+  loadConfessions();
+}, { deep: true });
 </script>
 
 <style scoped lang="scss">

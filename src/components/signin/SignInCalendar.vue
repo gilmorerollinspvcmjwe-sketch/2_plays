@@ -252,13 +252,16 @@ async function handleCheckIn() {
   const result = await pointsStore.checkIn();
 
   if (result.success) {
-    rewardInfo.value = result as RewardInfo;
+    rewardInfo.value = {
+      consecutiveDays: result.consecutiveDays ?? pointsStore.consecutiveSignInDays,
+      reward: result.reward ?? { points: 10 }
+    };
 
     // 如果是嵌入式模式，触发事件让父组件处理弹窗
     if (props.embedded) {
       emit('signin-success', {
-        consecutiveDays: result.consecutiveDays || pointsStore.consecutiveSignInDays,
-        reward: result.reward || { points: 10 }
+        consecutiveDays: rewardInfo.value.consecutiveDays,
+        reward: rewardInfo.value.reward
       });
     } else {
       showRewardPopup.value = true;

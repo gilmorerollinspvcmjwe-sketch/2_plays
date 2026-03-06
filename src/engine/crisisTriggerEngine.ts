@@ -3,14 +3,13 @@
  * 基于模拟数据自动触发危机事件
  */
 
-import type { 
-  CrisisType, 
-  CrisisLevel, 
+import type {
+  CrisisType,
+  CrisisLevel,
   Crisis,
   CrisisTemplate,
-  CRISIS_TEMPLATES,
-  initCrisis
 } from '@/types/crisis';
+import { CRISIS_TEMPLATES, initCrisis } from '@/types/crisis';
 
 // 危机触发条件接口
 export interface CrisisTriggerCondition {

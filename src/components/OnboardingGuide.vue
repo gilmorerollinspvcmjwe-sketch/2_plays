@@ -80,9 +80,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { ONBOARDING_STEPS } from '@/types/onboarding';
 
 const onboardingStore = useOnboardingStore();
-const totalSteps = 6;
+const totalSteps = ONBOARDING_STEPS.length;
 
 // 跳过确认弹窗显示状态
 const showSkipDialog = ref(false);

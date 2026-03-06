@@ -185,7 +185,10 @@ export const useConfessionStore = defineStore('confession', () => {
    * 基于角色人气阈值
    */
   function canGenerateConfession(character: Character): boolean {
-    return character.popularity >= POPULARITY_CONFIG.confessionThreshold;
+    const pop = typeof (character.popularity as { popularity?: number } | number) === 'object'
+      ? (character.popularity as { popularity?: number })?.popularity
+      : (character.popularity as number);
+    return (pop ?? 0) >= POPULARITY_CONFIG.confessionThreshold;
   }
 
   /**
@@ -197,8 +200,11 @@ export const useConfessionStore = defineStore('confession', () => {
     
     // 基础数量 + 人气加成
     const baseCount = 1;
+    const pop = typeof (character.popularity as { popularity?: number } | number) === 'object'
+      ? (character.popularity as { popularity?: number })?.popularity
+      : (character.popularity as number);
     const popularityBonus = Math.floor(
-      (character.popularity - POPULARITY_CONFIG.confessionThreshold) / 10
+      ((pop ?? 0) - POPULARITY_CONFIG.confessionThreshold) / 10
     );
     
     return Math.min(baseCount + popularityBonus, 5); // 最多5条

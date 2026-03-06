@@ -1208,16 +1208,16 @@ export class ContentGenerationEngine {
    */
   private calculateFanworkLikes(quality: FanworkQuality, type: FanworkType): number {
     const baseLikes: Record<FanworkQuality, number> = {
-      优质: 50,
-      普通: 20,
-      粗糙: 5,
+      excellent: 50,
+      normal: 20,
+      rough: 5,
     };
 
     const typeBonus: Record<FanworkType, number> = {
-      绘画: 1.2,
-      文稿: 1.0,
-      视频: 1.5,
-      COS: 1.3,
+      drawing: 1.2,
+      writing: 1.0,
+      video: 1.5,
+      cosplay: 1.3,
     };
 
     return Math.floor(baseLikes[quality] * typeBonus[type] * (0.5 + Math.random()));

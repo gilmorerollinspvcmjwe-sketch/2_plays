@@ -130,7 +130,7 @@ const simulationStats = computed(() => {
   // 计算平均值
   const projectQuality = project ? Math.round(project.metrics?.rating || 70) : 0;
   const characterPopularity = Math.round(simulationStore.commentMetrics?.heat || 50);
-  const plotHeat = Math.round(simulationStore.commentMetrics?.sentiment || 50);
+  const plotHeat = Math.round(simulationStore.commentMetrics?.heat || 50);
 
   return {
     projectQuality,

@@ -20,6 +20,7 @@ import type { Player } from './playerStore';
 import { useSimulationStore } from './simulationStore';
 import { useProjectStore } from './projectStore';
 import { useGameStore } from './gameStore';
+import { usePointsStore } from './points';
 import { contentGenerationEngine, type ContentAssociation, type SentimentType } from '@/engine/contentGenerationEngine';
 import type { GenerationContext, CharacterHeat, PlotHeat, ActivityHeat, GameEvent } from '@/engine/contentGenerationEngine';
 import type { VirtualPlayer } from '@/engine/simulation/types';
@@ -134,36 +135,15 @@ export interface CharacterReputationData {
 export const useCommentStore = defineStore('comment', () => {
   // 引入 simulationStore
   const simulationStore = useSimulationStore();
+  const pointsStore = usePointsStore();
   
   // State - store 延迟初始化
   const comments = ref<GameComment[]>([]);
   const rhythmEvents = ref<RhythmEvent[]>([]);
   
-  // 从 simulationStore 获取舆情数据
-  const publicOpinion = computed<PublicOpinion>(() => ({
-    heat: simulationStore.commentMetrics?.heat || 0,
-    sentiment: simulationStore.commentMetrics?.sentiment || 0,
-    trend: (simulationStore.commentMetrics?.sentiment || 0) > 10 ? 'up' : 
-           (simulationStore.commentMetrics?.sentiment || 0) < -10 ? 'down' : 'stable',
-    triggers: simulationStore.platformStatistics ? 
-      Object.entries(simulationStore.platformStatistics.sentimentDistribution)
-        .filter(([_, count]) => count > 0)
-        .map(([sentiment]) => sentiment) : []
-  }));
-  
-  // 从 simulationStore 获取情感统计
-  const sentimentStats = computed<SentimentStats>(() => {
-    const stats = simulationStore.platformStatistics;
-    const total = stats ? stats.sentimentDistribution.positive + stats.sentimentDistribution.neutral + stats.sentimentDistribution.negative : 0;
-    return {
-      total: stats?.totalComments || 0,
-      positive: stats?.sentimentDistribution.positive || 0,
-      negative: stats?.sentimentDistribution.negative || 0,
-      neutral: stats?.sentimentDistribution.neutral || 0,
-      satisfaction: 85 + (simulationStore.commentMetrics?.sentiment || 0) * 0.15,
-      hotTags: []
-    };
-  });
+  // 舆情数据和情感统计使用可写 ref，避免对 computed 赋值导致运行时错误
+  const publicOpinion = ref<PublicOpinion>(createPublicOpinionFromSimulation());
+  const sentimentStats = ref<SentimentStats>(createSentimentStatsFromSimulation());
   
   const isGenerating = ref(false);
   const lastGeneratedAt = ref<string | null>(null);
@@ -201,8 +181,21 @@ export const useCommentStore = defineStore('comment', () => {
     
     if (uniqueNewComments.length > 0) {
       comments.value.unshift(...uniqueNewComments);
+      updateSentimentStats();
+      updatePublicOpinion();
     }
   }, { deep: true });
+
+  watch(
+    () => [simulationStore.commentMetrics, simulationStore.platformStatistics],
+    () => {
+      if (comments.value.length === 0) {
+        publicOpinion.value = createPublicOpinionFromSimulation();
+        sentimentStats.value = createSentimentStatsFromSimulation();
+      }
+    },
+    { deep: true, immediate: true }
+  );
   
   // 平台映射函数
   function mapPlatformToUI(platform: string): PlatformType {
@@ -214,6 +207,32 @@ export const useCommentStore = defineStore('comment', () => {
       '贴吧': 'tieba'
     };
     return mapping[platform] || 'weibo';
+  }
+
+  function createPublicOpinionFromSimulation(): PublicOpinion {
+    const sentiment = simulationStore.commentMetrics?.sentiment || 0;
+    return {
+      heat: simulationStore.commentMetrics?.heat || 0,
+      sentiment,
+      trend: sentiment > 10 ? 'up' : sentiment < -10 ? 'down' : 'stable',
+      triggers: simulationStore.platformStatistics
+        ? Object.entries(simulationStore.platformStatistics.sentimentDistribution)
+            .filter(([_, count]) => count > 0)
+            .map(([sentimentKey]) => sentimentKey)
+        : []
+    };
+  }
+
+  function createSentimentStatsFromSimulation(): SentimentStats {
+    const stats = simulationStore.platformStatistics;
+    return {
+      total: stats?.totalComments || 0,
+      positive: stats?.sentimentDistribution.positive || 0,
+      negative: stats?.sentimentDistribution.negative || 0,
+      neutral: stats?.sentimentDistribution.neutral || 0,
+      satisfaction: 85 + (simulationStore.commentMetrics?.sentiment || 0) * 0.15,
+      hotTags: []
+    };
   }
   
   // Getters
@@ -534,8 +553,8 @@ export const useCommentStore = defineStore('comment', () => {
       comments.value.unshift(...newComments);
       
       // 分析评论中的角色提及并更新人气
-      const gameStore = useGameStore();
-      gameStore.analyzeCommentMentions(newComments.map(c => ({
+    const currentGameStore = useGameStore();
+    currentGameStore.analyzeCommentMentions(newComments.map(c => ({
         content: c.content,
         sentiment: c.sentiment
       })));
@@ -580,7 +599,10 @@ export const useCommentStore = defineStore('comment', () => {
 
     // 构建角色热度信息
     const characters: CharacterHeat[] = [];
-    gameStore.characters.forEach(char => {
+    const currentGame = gameStore.currentGame;
+    if (!currentGame) return null;
+
+    currentGame.characters.forEach(char => {
       characters.push({
         characterId: char.id,
         characterName: char.name,
@@ -593,7 +615,7 @@ export const useCommentStore = defineStore('comment', () => {
 
     // 构建剧情热度信息
     const plots: PlotHeat[] = [];
-    gameStore.plots.forEach(plot => {
+    currentGame.plots.forEach(plot => {
       plots.push({
         plotId: plot.id,
         plotTitle: plot.title,
@@ -942,7 +964,7 @@ export const useCommentStore = defineStore('comment', () => {
    */
   function updatePublicOpinion() {
     if (comments.value.length === 0) {
-      publicOpinion.value = { heat: 0, sentiment: 0, trend: 'stable', triggers: [] };
+      publicOpinion.value = createPublicOpinionFromSimulation();
       return;
     }
     
@@ -1023,7 +1045,7 @@ export const useCommentStore = defineStore('comment', () => {
       
       // 评论获赞 10+ 奖励积分
       if (comment.likes === 10) {
-        pointsStore.unlockAchievement('hot_comment');
+        void pointsStore.unlockAchievement('hot_comment');
       }
     }
     
@@ -1040,13 +1062,14 @@ export const useCommentStore = defineStore('comment', () => {
   function replyToComment(id: string, content: string): boolean {
     const comment = comments.value.find(c => c.id === id);
     if (!comment) return false;
+    if (!content.trim()) return false;
     
-    comment.replies++;
+    comment.comments++;
     saveToLocal();
     
     // 处理负面评论奖励
     if (comment.sentiment === 'negative') {
-      pointsStore.spendPoints(-5, '处理负面评论奖励');
+      void pointsStore.spendPoints(-5, '处理负面评论奖励');
     }
     
     return true;
@@ -1082,7 +1105,7 @@ export const useCommentStore = defineStore('comment', () => {
     // 统计热门标签
     const tagCount: Record<string, number> = {};
     comments.value.forEach(comment => {
-      comment.tags.forEach(tag => {
+      (comment.tags || []).forEach(tag => {
         tagCount[tag] = (tagCount[tag] || 0) + 1;
       });
     });
@@ -1132,10 +1155,9 @@ export const useCommentStore = defineStore('comment', () => {
       try {
         const data = JSON.parse(saved);
         comments.value = data.comments || [];
-        sentimentStats.value = data.sentimentStats || {
-          total: 0, positive: 0, negative: 0, neutral: 0, satisfaction: 85, hotTags: []
-        };
+        sentimentStats.value = data.sentimentStats || createSentimentStatsFromSimulation();
         lastGeneratedAt.value = data.lastGeneratedAt || null;
+        updatePublicOpinion();
       } catch (e) {
         console.error('加载评论数据失败:', e);
       }

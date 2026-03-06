@@ -16,7 +16,7 @@
     />
 
     <!-- AI 评论生成器 -->
-    <CommentGenerator @generate="handleGeneratedComments" />
+    <CommentGenerator />
 
     <!-- 评论列表（已整合多渠道功能） -->
     <CommentList
@@ -84,24 +84,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { useCommentStore, type CommentFilter, type GameComment } from '@/stores/commentStore';
-import { useOperationStore } from '@/stores/operationStore';
+import { useCommentStore, type GameComment } from '@/stores/commentStore';
 import { showToast, showConfirmDialog, showDialog } from 'vant';
 import CommentGenerator from '@/components/comments/CommentGenerator.vue';
 import CommentList from '@/components/comments/CommentList.vue';
 import SentimentOverview from '@/components/comments/SentimentOverview.vue';
 
 const commentStore = useCommentStore();
-const operationStore = useOperationStore();
 
 const showControlPanel = ref(false);
-
-// 筛选状态
-const filter = ref<CommentFilter>({
-  type: 'all',
-  sentiment: 'all',
-  playerType: 'all'
-});
 
 // 显示所有评论
 const displayedComments = computed(() => {
@@ -117,14 +108,6 @@ const pendingRhythms = computed(() => {
 const totalReputationLoss = computed(() => {
   return pendingRhythms.value.reduce((sum, e) => sum + Math.abs(e.reputationImpact), 0);
 });
-
-// 处理生成的评论
-function handleGeneratedComments(newComments: GameComment[]) {
-  showToast({
-    message: `成功生成${newComments.length}条评论`,
-    icon: 'success'
-  });
-}
 
 // 处理点赞
 function handleLikeComment(id: string) {
@@ -156,13 +139,16 @@ async function handleControl(method: 'welfare' | 'control' | 'ignore') {
   }
 
   if (method !== 'ignore') {
-    const confirmed = await showConfirmDialog({
-      title: '确认操作',
-      message: method === 'welfare' 
-        ? `消耗 ${pendingRhythms.value.length * 50} 钻石发福利？`
-        : `消耗 ${pendingRhythms.value.length * 100} 金币控评？`
-    });
-    if (confirmed !== 'confirm') return;
+    try {
+      await showConfirmDialog({
+        title: '确认操作',
+        message: method === 'welfare'
+          ? `消耗 ${pendingRhythms.value.length * 50} 钻石发福利？`
+          : `消耗 ${pendingRhythms.value.length * 100} 金币控评？`
+      });
+    } catch {
+      return;
+    }
   }
 
   const result = await commentStore.controlOpinion(method);

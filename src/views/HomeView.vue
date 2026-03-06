@@ -338,7 +338,7 @@ function handlePendingTask(task: PendingTask) {
       router.push('/creator/character');
       break;
     case 'plot':
-      router.push('/plot-designer');
+      router.push('/creator/plot');
       break;
     case 'team':
       router.push('/team-management');

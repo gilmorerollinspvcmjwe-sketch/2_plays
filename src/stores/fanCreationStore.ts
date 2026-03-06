@@ -57,8 +57,8 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
       characterName: f.relatedCharacters[0] || '霸道总裁 - 陆沉',
       content: f.content,
       imageUrl: f.type === '绘画' ? `https://picsum.photos/400/300?random=${f.id.slice(-5)}` : undefined,
-      authorId: f.authorId,
-      authorName: f.authorName,
+      authorId: f.playerId,
+      authorName: `同人作者_${f.playerId.slice(-4)}`,
       likes: f.likes,
       collections: Math.floor(f.likes * 0.3),
       createdAt: new Date(f.timestamp).toISOString(),
@@ -291,7 +291,7 @@ export const useFanCreationStore = defineStore('fanCreation', () => {
         isCollected: false
       };
 
-      creations.value.push(creation);
+      userCreations.value.push(creation);
     }
 
     saveToLocal();

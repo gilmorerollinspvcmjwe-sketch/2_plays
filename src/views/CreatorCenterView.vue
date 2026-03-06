@@ -109,13 +109,13 @@ const currentLevelInfo = computed(() => {
 // 下一级所需经验
 const nextLevelExp = computed(() => {
   const nextLevel = CREATOR_LEVELS.find(l => l.level === creatorStore.growth.level + 1);
-  return nextLevel?.requiredExp || creatorStore.growth.totalExperience;
+  return nextLevel?.expRequired || creatorStore.growth.totalExperience;
 });
 
 // 等级进度百分比
 const levelProgress = computed(() => {
   const currentExp = creatorStore.growth.totalExperience;
-  const currentLevelRequired = currentLevelInfo.value?.requiredExp || 0;
+  const currentLevelRequired = currentLevelInfo.value?.expRequired || 0;
   const nextLevelRequired = nextLevelExp.value;
   
   if (nextLevelRequired === currentLevelRequired) return 100;

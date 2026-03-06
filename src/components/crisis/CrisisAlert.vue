@@ -25,26 +25,26 @@
             <p class="crisis-desc">{{ crisis.description }}</p>
             <div class="crisis-stats">
               <span>🔥 热度：{{ crisis.heat }}%</span>
-              <span>👥 影响：{{ crisis.affectedUsers }}人</span>
-              <span :class="['sentiment', crisis.sentiment > 0 ? 'positive' : 'negative']">
-                {{ crisis.sentiment > 0 ? '😊 正面' : '😞 负面' }}
+              <span>👥 影响：{{ crisis.participants }}人</span>
+              <span :class="['sentiment', crisis.status === 'resolved' ? 'positive' : 'negative']">
+                {{ crisis.status === 'resolved' ? '已缓解' : '处理中' }}
               </span>
             </div>
           </div>
 
-          <div class="crisis-actions" v-if="crisis.status === 'pending' && crisis.options">
+          <div class="crisis-actions" v-if="crisis.status !== 'resolved' && crisis.options?.length">
             <div class="action-title">处理方案：</div>
             <div class="action-list">
               <div
-                v-for="option in crisis.options"
-                :key="option.id"
+                v-for="option in getOptionConfigs(crisis.options)"
+                :key="option.type"
                 class="action-item"
                 @click="handleResolve(crisis.id, option)"
               >
-                <div class="action-text">{{ option.text }}</div>
+                <div class="action-text">{{ option.name }}</div>
                 <div class="action-meta">
                   <span>💰 {{ option.cost }}积分</span>
-                  <span>✓ {{ (option.successRate * 100).toFixed(0) }}%</span>
+                  <span>✓ {{ ((1 - option.risk) * 100).toFixed(0) }}%</span>
                 </div>
               </div>
             </div>
@@ -58,14 +58,14 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { showDialog } from 'vant'
-import type { Crisis, CrisisResolution } from '@/types/crisis'
+import { CRISIS_OPTIONS, type Crisis, type CrisisOption, type CrisisOptionConfig } from '@/types/crisis'
 
 interface Props {
   crises: Crisis[]
 }
 
 interface Emits {
-  (e: 'resolve', crisisId: string, resolution: CrisisResolution): void
+  (e: 'resolve', crisisId: string, option: CrisisOption): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -94,15 +94,21 @@ const getLevelName = (level: string): string => {
   return map[level] || level
 }
 
-const handleResolve = (crisisId: string, option: CrisisResolution) => {
+const getOptionConfigs = (options: CrisisOption[]): CrisisOptionConfig[] => {
+  return options
+    .map(option => CRISIS_OPTIONS.find(config => config.type === option))
+    .filter((option): option is CrisisOptionConfig => Boolean(option))
+}
+
+const handleResolve = (crisisId: string, option: CrisisOptionConfig) => {
   showDialog({
     title: '确认处理',
-    message: `确定要使用"${option.text}"方案处理危机吗？\n消耗：${option.cost}积分\n成功率：${(option.successRate * 100).toFixed(0)}%`,
+    message: `确定要使用"${option.name}"方案处理危机吗？\n消耗：${option.cost}积分\n预估成功率：${((1 - option.risk) * 100).toFixed(0)}%`,
     confirmButtonText: '确认处理',
     cancelButtonText: '再想想'
   }).then(() => {
-    emit('resolve', crisisId, option)
-  })
+    emit('resolve', crisisId, option.type)
+  }).catch(() => {})
 }
 </script>
 

@@ -112,7 +112,7 @@
             </div>
 
             <!-- 标签 -->
-            <div class="comment-tags" v-if="comment.tags.length > 0">
+            <div class="comment-tags" v-if="(comment.tags?.length ?? 0) > 0">
               <van-tag
                 v-for="tag in comment.tags"
                 :key="tag"
@@ -282,23 +282,23 @@ function formatHeat(heat: number): string {
 }
 
 // 情感标签类型
-function getSentimentType(sentiment: CommentSentiment): string {
+function getSentimentType(sentiment?: CommentSentiment): string {
   const map: Record<CommentSentiment, string> = {
     positive: 'success',
     negative: 'danger',
     neutral: 'default'
   };
-  return map[sentiment];
+  return map[sentiment || 'neutral'];
 }
 
 // 情感标签文字
-function getSentimentLabel(sentiment: CommentSentiment): string {
+function getSentimentLabel(sentiment?: CommentSentiment): string {
   const map: Record<CommentSentiment, string> = {
     positive: '好评',
     negative: '差评',
     neutral: '中立'
   };
-  return map[sentiment];
+  return map[sentiment || 'neutral'];
 }
 
 // 格式化时间
@@ -349,9 +349,11 @@ function onRefresh() {
 
 // 加载更多
 function onLoad() {
+  loading.value = true;
   setTimeout(() => {
     if (currentPage.value * pageSize >= filteredComments.value.length) {
       finished.value = true;
+      loading.value = false;
     } else {
       currentPage.value++;
       loading.value = false;
