@@ -62,6 +62,12 @@ const router = createRouter({
           component: () => import('@/views/AchievementsView.vue')
         },
         {
+          path: 'creator-center',
+          name: 'creatorCenter',
+          component: () => import('@/views/CreatorCenterView.vue'),
+          meta: { title: '创作者中心' }
+        },
+        {
           path: 'company-setup',
           name: 'companySetup',
           component: () => import('@/views/CompanySetupView.vue'),

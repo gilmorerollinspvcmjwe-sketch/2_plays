@@ -64,15 +64,28 @@
       </div>
     </Transition>
   </Teleport>
+  
+  <!-- 跳过确认弹窗 - 使用组件式调用确保正确的 z-index -->
+  <van-dialog
+    v-model:show="showSkipDialog"
+    title="跳过引导"
+    message="确定要跳过新手引导吗？你可以在我的页面随时重新查看引导。"
+    show-cancel-button
+    confirm-button-text="跳过"
+    cancel-button-text="继续引导"
+    @confirm="confirmSkip"
+  />
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useOnboardingStore } from '@/stores/onboardingStore';
-import { showConfirmDialog } from 'vant';
 
 const onboardingStore = useOnboardingStore();
 const totalSteps = 6;
+
+// 跳过确认弹窗显示状态
+const showSkipDialog = ref(false);
 
 const currentStepData = computed(() => onboardingStore.currentStepData);
 
@@ -95,17 +108,14 @@ function handleNext() {
   }
 }
 
-async function handleSkip() {
-  const result = await showConfirmDialog({
-    title: '跳过引导',
-    message: '确定要跳过新手引导吗？你可以在"我的"页面随时重新查看引导。',
-    confirmButtonText: '跳过',
-    cancelButtonText: '继续引导'
-  });
-  
-  if (result === 'confirm') {
-    onboardingStore.skip();
-  }
+function handleSkip() {
+  // 显示组件式弹窗
+  showSkipDialog.value = true;
+}
+
+function confirmSkip() {
+  onboardingStore.skip();
+  showSkipDialog.value = false;
 }
 
 function handleOverlayClick() {

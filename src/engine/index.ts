@@ -119,12 +119,15 @@ export {
   type SeasonState,
 } from './seasonEventEngine';
 
-export {
+export type {
   SeasonType,
   SeasonBuff,
   HolidayBuff,
   HolidayType,
   DateBuffStatus,
+} from '@/utils/seasonUtils';
+
+export {
   getSeasonByMonth,
   getCurrentSeason,
   getSeasonBuff,

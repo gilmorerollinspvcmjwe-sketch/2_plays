@@ -74,13 +74,15 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<Emits>()
 
-const showPopup = ref(true)
+const showPopup = ref(false)
 
 watch(() => props.crises.length, (newLength) => {
   if (newLength > 0) {
     showPopup.value = true
+  } else {
+    showPopup.value = false
   }
-})
+}, { immediate: true })
 
 const getLevelName = (level: string): string => {
   const map: Record<string, string> = {

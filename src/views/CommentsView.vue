@@ -18,18 +18,13 @@
     <!-- AI 评论生成器 -->
     <CommentGenerator @generate="handleGeneratedComments" />
 
-    <!-- 评论列表 -->
+    <!-- 评论列表（已整合多渠道功能） -->
     <CommentList
       :comments="displayedComments"
       @like="handleLikeComment"
       @reply="handleReplyComment"
       @share="handleShareComment"
     />
-
-    <!-- 多平台评论展示 -->
-    <div class="platform-section">
-      <PlatformComments />
-    </div>
 
     <!-- 控评操作悬浮按钮 -->
     <van-floating-bubble
@@ -92,7 +87,6 @@ import { ref, computed, onMounted } from 'vue';
 import { useCommentStore, type CommentFilter, type GameComment } from '@/stores/commentStore';
 import { useOperationStore } from '@/stores/operationStore';
 import { showToast, showConfirmDialog, showDialog } from 'vant';
-import PlatformComments from '@/components/community/PlatformComments.vue';
 import CommentGenerator from '@/components/comments/CommentGenerator.vue';
 import CommentList from '@/components/comments/CommentList.vue';
 import SentimentOverview from '@/components/comments/SentimentOverview.vue';
@@ -214,12 +208,6 @@ onMounted(() => {
   margin-bottom: 16px;
   border-radius: 8px;
   cursor: pointer;
-}
-
-// 多平台评论区域
-.platform-section {
-  margin-top: 16px;
-  margin-bottom: 16px;
 }
 
 // 控评操作悬浮按钮

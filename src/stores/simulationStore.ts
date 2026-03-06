@@ -44,12 +44,37 @@ import { DailyEventEngine } from '@/engine/dailyEventEngine';
 import type { DailyEvent, DailyEventType } from '@/engine/dailyEventEngine';
 import { seasonEventEngine } from '@/engine/seasonEventEngine';
 import {
+  checkIncidentTrigger,
+  type IncidentTriggerResult
+} from '@/engine/eventTriggerEngine';
+import {
+  checkCrisisTrigger,
+  createCrisisInstance,
+  type CrisisTriggerResult
+} from '@/engine/crisisTriggerEngine';
+import type { Crisis } from '@/types/crisis';
+import {
   calculateProjectQuality,
   calculateCharacterQuality,
   calculatePlotQuality,
   type ProjectQualityScore
 } from '@/engine/qualityScoring';
 import type { Character, Plot } from '@/types';
+import {
+  contentGenerationEngine,
+  type GenerationContext,
+  type CharacterHeat,
+  type PlotHeat,
+  type ActivityHeat,
+  type GameEvent,
+  type GeneratedComment,
+  type GeneratedConfession,
+  type GeneratedFanwork
+} from '@/engine/contentGenerationEngine';
+import { HEAT_THRESHOLD as FANWORK_HEAT_THRESHOLD } from './fanworkStore';
+import { useCommentStore } from './commentStore';
+import { useConfessionStore } from './confessionStore';
+import { useFanworkStore } from './fanworkStore';
 
 export interface RetentionData {
   d1: number;
@@ -157,8 +182,39 @@ export const useSimulationStore = defineStore('simulation', () => {
   const platformStatistics = ref<PlatformStatistics | null>(null);
 
   // ==================== Phase 2: 新增状态 ====================
-  // 项目运营数据映射（projectId -> data）
-  const projectOperationData = ref<Map<string, ProjectOperationData>>(new Map());
+// 项目运营数据映射（projectId -> data）
+const projectOperationData = ref<Map<string, ProjectOperationData>>(new Map());
+
+// ==================== 内容生成相关状态 ====================
+// 每日内容生成统计
+const dailyContentStats = ref<{
+  comments: number;
+  confessions: number;
+  fanworks: number;
+  hotComments: GeneratedComment[];
+  hotConfessions: GeneratedConfession[];
+  hotFanworks: GeneratedFanwork[];
+}>({
+  comments: 0,
+  confessions: 0,
+  fanworks: 0,
+  hotComments: [],
+  hotConfessions: [],
+  hotFanworks: []
+});
+
+// 内容生成历史
+const contentGenerationHistory = ref<Array<{
+  day: number;
+  comments: number;
+  confessions: number;
+  fanworks: number;
+}>>([]);
+
+// 告白生成阈值
+const CONFESSION_POPULARITY_THRESHOLD = 20;
+// 同人热度阈值
+const FANWORK_HEAT_THRESHOLD = 30;
 
   // 全局运营指标（汇总所有项目）
   const globalMetrics = ref<GlobalMetrics>({
@@ -191,7 +247,395 @@ export const useSimulationStore = defineStore('simulation', () => {
   const triggeredEvents = ref<DailyEvent[]>([]);
   const pendingNeutralEvents = ref<DailyEvent[]>([]);
 
+  // ==================== 运营事件和危机状态 ====================
+  const dailyIncidents = ref<IncidentTriggerResult[]>([]);
+  const dailyCrises = ref<CrisisTriggerResult[]>([]);
+  const activeCrises = ref<Crisis[]>([]);
+
   const isInitialized = computed(() => playerPool.value !== null && engine.value !== null);
+
+  // ==================== 内容生成相关函数 ====================
+
+  /**
+   * 构建内容生成上下文
+   * 基于当前项目状态构建 GenerationContext
+   */
+  function buildGenerationContext(project: any): GenerationContext | null {
+    const gameStore = useGameStore();
+    const operationStore = useOperationStore();
+
+    // 获取项目关联的角色
+    const projectChars: Character[] = project.characters
+      .map((id: string) => gameStore.characters.find(c => c.id === id))
+      .filter((c: Character | undefined): c is Character => c !== undefined);
+
+    // 获取项目关联的剧情
+    const projectPlots: Plot[] = project.plots
+      .map((id: string) => gameStore.plots.find(p => p.id === id))
+      .filter((p: Plot | undefined): p is Plot => p !== undefined);
+
+    // 构建角色热度信息
+    const characters: CharacterHeat[] = projectChars.map(char => ({
+      characterId: char.id,
+      characterName: char.name,
+      popularity: char.popularity?.current || char.popularity?.base || 50,
+      intimacy: char.intimacy?.current || 50,
+      plotPerformance: char.plotPerformance || 50,
+      cpHeat: new Map(Object.entries(char.popularity?.cpHeat || {}))
+    }));
+
+    // 构建剧情热度信息
+    const plots: PlotHeat[] = projectPlots.map(plot => ({
+      plotId: plot.id,
+      plotTitle: plot.title,
+      heat: plot.heat || 50,
+      sentiment: 'neutral',
+      discussionCount: plot.discussionCount || 0
+    }));
+
+    // 构建活动热度信息
+    const activities: ActivityHeat[] = operationStore.events
+      .filter((e: any) => e.projectId === project.id && e.status === 'ongoing')
+      .map((e: any) => ({
+        activityId: e.id,
+        activityName: e.name,
+        heat: e.heat || 50,
+        type: e.type || 'event'
+      }));
+
+    // 获取项目运营数据
+    const projectData = projectOperationData.value.get(project.id);
+
+    // 构建游戏事件
+    const recentEvents: GameEvent[] = triggeredEvents.value.map(e => ({
+      id: e.id,
+      type: e.category === 'positive' ? 'positive' : e.category === 'negative' ? 'negative' : 'neutral',
+      title: e.title,
+      description: e.description,
+      timestamp: Date.now(),
+      impact: e.impact ? {
+        target: 'reputation',
+        value: e.impact.reputationChange || 0
+      } : undefined
+    }));
+
+    return {
+      project: project as any,
+      metrics: {
+        rating: (projectData?.satisfaction || 0.7) * 10,
+        downloads: projectData?.activePlayers || 1000,
+        revenue: projectData?.totalRevenue || 0,
+        dau: projectData?.activePlayers || 1000,
+        mau: projectData?.activePlayers ? projectData.activePlayers * 3 : 3000,
+        retention: {
+          d1: projectData?.retentionRate || 0.5,
+          d7: (projectData?.retentionRate || 0.5) * 0.6,
+          d30: (projectData?.retentionRate || 0.5) * 0.3
+        }
+      },
+      characters,
+      plots,
+      activities,
+      recentEvents,
+      daySinceLaunch: currentDay.value,
+      playerSatisfaction: projectData?.satisfaction || 0.7
+    };
+  }
+
+  /**
+   * 生成虚拟玩家列表
+   */
+  function createVirtualPlayers(count: number): import('@/engine/simulation/types').VirtualPlayer[] {
+    const playStyles = ['剧情党', '强度党', 'XP党', '社交党', '咸鱼党'];
+    const players: import('@/engine/simulation/types').VirtualPlayer[] = [];
+
+    for (let i = 0; i < count; i++) {
+      players.push({
+        id: `virtual_${Date.now()}_${i}`,
+        playStyle: playStyles[Math.floor(Math.random() * playStyles.length)],
+        satisfaction: 0.3 + Math.random() * 0.7,
+        loyalty: 0.2 + Math.random() * 0.8,
+        activityLevel: 0.1 + Math.random() * 0.9,
+        state: 'ACTIVE',
+        lastActiveTime: Date.now()
+      });
+    }
+
+    return players;
+  }
+
+  /**
+   * 计算角色平均人气
+   */
+  function calculateAverageCharacterPopularity(characters: CharacterHeat[]): number {
+    if (characters.length === 0) return 0;
+    return characters.reduce((sum, c) => sum + c.popularity, 0) / characters.length;
+  }
+
+  /**
+   * 计算剧情平均热度
+   */
+  function calculateAveragePlotHeat(plots: PlotHeat[]): number {
+    if (plots.length === 0) return 0;
+    return plots.reduce((sum, p) => sum + p.heat, 0) / plots.length;
+  }
+
+  /**
+   * 执行内容生成
+   * 项目上线后每日触发
+   */
+  function generateContentForProject(project: any): {
+    comments: GeneratedComment[];
+    confessions: GeneratedConfession[];
+    fanworks: GeneratedFanwork[];
+  } {
+    const context = buildGenerationContext(project);
+    if (!context) {
+      return { comments: [], confessions: [], fanworks: [] };
+    }
+
+    // 计算平均人气和热度
+    const avgCharacterPopularity = calculateAverageCharacterPopularity(context.characters);
+    const avgPlotHeat = calculateAveragePlotHeat(context.plots);
+
+    // 根据项目运营数据确定生成数量
+    const projectData = projectOperationData.value.get(project.id);
+    const activePlayers = projectData?.activePlayers || 1000;
+
+    // 评论生成：项目上线后每日触发
+    const commentCount = Math.max(5, Math.floor(activePlayers / 100));
+    const players = createVirtualPlayers(commentCount);
+
+    // 告白生成：角色人气达到阈值后触发
+    const canGenerateConfessions = avgCharacterPopularity >= CONFESSION_POPULARITY_THRESHOLD;
+
+    // 同人生成：热度达到阈值后触发
+    const canGenerateFanworks = avgCharacterPopularity >= FANWORK_HEAT_THRESHOLD ||
+                                 avgPlotHeat >= FANWORK_HEAT_THRESHOLD;
+
+    // 使用内容生成引擎生成内容
+    const result = contentGenerationEngine.generate(context, players);
+
+    // 过滤告白（检查人气阈值）
+    const filteredConfessions = canGenerateConfessions ? result.confessions : [];
+
+    // 过滤同人（检查热度阈值）
+    const filteredFanworks = canGenerateFanworks ? result.fanworks : [];
+
+    return {
+      comments: result.comments,
+      confessions: filteredConfessions,
+      fanworks: filteredFanworks
+    };
+  }
+
+  /**
+   * 应用内容生成对游戏状态的影响
+   */
+  function applyContentImpact(
+    comments: GeneratedComment[],
+    confessions: GeneratedConfession[],
+    fanworks: GeneratedFanwork[]
+  ): {
+    reputationChange: number;
+    popularityChanges: Map<string, number>;
+  } {
+    const gameStore = useGameStore();
+    let reputationChange = 0;
+    const popularityChanges = new Map<string, number>();
+
+    // 1. 评论对声誉的影响
+    comments.forEach(comment => {
+      if (comment.sentiment === 'negative') {
+        // 负面评论降低声誉
+        reputationChange -= 0.1;
+      } else if (comment.sentiment === 'positive') {
+        // 正面评论提升声誉
+        reputationChange += 0.05;
+      }
+    });
+
+    // 2. 告白对角色人气的影响
+    confessions.forEach(confession => {
+      if (confession.association.characterId) {
+        const currentChange = popularityChanges.get(confession.association.characterId) || 0;
+        popularityChanges.set(confession.association.characterId, currentChange + 0.5);
+      }
+    });
+
+    // 3. 同人对角色人气的影响
+    fanworks.forEach(fanwork => {
+      // 同人作品提升关联角色人气
+      if (fanwork.association.characterId) {
+        const currentChange = popularityChanges.get(fanwork.association.characterId) || 0;
+        const qualityBonus = fanwork.quality === '优质' ? 1.0 :
+                            fanwork.quality === '普通' ? 0.5 : 0.2;
+        popularityChanges.set(fanwork.association.characterId, currentChange + qualityBonus);
+      }
+
+      // CP同人提升两个角色的人气
+      if (fanwork.association.cpCharacters) {
+        fanwork.association.cpCharacters.forEach(charId => {
+          const currentChange = popularityChanges.get(charId) || 0;
+          popularityChanges.set(charId, currentChange + 0.3);
+        });
+      }
+    });
+
+    // 应用角色人气变化
+    popularityChanges.forEach((change, characterId) => {
+      gameStore.updateCharacterPopularity(characterId, {
+        popularity: change,
+        discussionHeat: change * 2
+      });
+    });
+
+    return { reputationChange, popularityChanges };
+  }
+
+  /**
+   * 应用危机影响
+   * @param crisis 危机实例
+   * @returns 影响数值
+   */
+  function applyCrisisImpact(crisis: Crisis): {
+    reputationChange: number;
+    playerChange: number;
+    satisfactionChange: number;
+  } {
+    const levelMultipliers: Record<string, number> = {
+      minor: 0.5,
+      moderate: 1.0,
+      severe: 1.5,
+      critical: 2.0
+    };
+
+    const multiplier = levelMultipliers[crisis.level] || 1.0;
+
+    const reputationChange = -5 * multiplier;
+    const playerChange = -50 * multiplier;
+    const satisfactionChange = -3 * multiplier;
+
+    // 应用影响
+    operationMetrics.value.reputation = Math.max(0, operationMetrics.value.reputation + reputationChange);
+
+    return { reputationChange, playerChange, satisfactionChange };
+  }
+
+  /**
+   * 更新每日内容生成统计
+   */
+  function updateDailyContentStats(
+    comments: GeneratedComment[],
+    confessions: GeneratedConfession[],
+    fanworks: GeneratedFanwork[]
+  ): void {
+    // 获取热门内容（点赞数前3）
+    const hotComments = [...comments]
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 3);
+
+    const hotConfessions = [...confessions]
+      .sort((a, b) => b.likes - a.likes)
+      .slice(0, 3);
+
+    const hotFanworks = [...fanworks]
+      .sort((a, b) => b.likes - a.likes)
+      .slice(0, 3);
+
+    dailyContentStats.value = {
+      comments: comments.length,
+      confessions: confessions.length,
+      fanworks: fanworks.length,
+      hotComments,
+      hotConfessions,
+      hotFanworks
+    };
+
+    // 添加到历史
+    contentGenerationHistory.value.push({
+      day: currentDay.value,
+      comments: comments.length,
+      confessions: confessions.length,
+      fanworks: fanworks.length
+    });
+
+    // 限制历史记录长度
+    if (contentGenerationHistory.value.length > 30) {
+      contentGenerationHistory.value.shift();
+    }
+  }
+
+  /**
+   * 同步生成的内容到各个 Store
+   */
+  function syncContentToStores(
+    projectId: string,
+    comments: GeneratedComment[],
+    confessions: GeneratedConfession[],
+    fanworks: GeneratedFanwork[]
+  ): void {
+    const commentStore = useCommentStore();
+    const confessionStore = useConfessionStore();
+    const fanworkStore = useFanworkStore();
+
+    // 同步评论
+    if (comments.length > 0) {
+      const gameComments = comments.map(c => ({
+        id: c.id,
+        content: c.content,
+        type: 'game' as const,
+        sentiment: c.sentiment as 'positive' | 'neutral' | 'negative',
+        playerType: 'casual' as const,
+        platform: mapEnginePlatformToUI(c.platform),
+        tags: c.relatedTags,
+        likes: c.rating || Math.floor(Math.random() * 50) + 10,
+        shares: Math.floor(Math.random() * 20),
+        comments: Math.floor(Math.random() * 10),
+        heat: 0,
+        createdAt: new Date(c.timestamp).toISOString(),
+        isLiked: false,
+        projectId: c.association.projectId,
+        projectName: c.association.projectName,
+        characterId: c.association.characterId,
+        characterName: c.association.characterName,
+        plotId: c.association.plotId,
+        plotTitle: c.association.plotTitle
+      }));
+
+      // 添加到 commentStore
+      gameComments.forEach(comment => {
+        commentStore.comments.unshift(comment);
+      });
+    }
+
+    // 同步告白
+    if (confessions.length > 0) {
+      confessionStore.generateConfessions(confessions);
+    }
+
+    // 同步同人
+    if (fanworks.length > 0) {
+      const context = buildGenerationContext({ id: projectId });
+      if (context) {
+        fanworkStore.generateFanworks(context);
+      }
+    }
+  }
+
+  /**
+   * 将引擎平台类型映射到 UI 平台类型
+   */
+  function mapEnginePlatformToUI(platform: string): import('./commentStore').PlatformType {
+    const mapping: Record<string, import('./commentStore').PlatformType> = {
+      'taptap': 'tieba',
+      'appstore': 'weibo',
+      'weibo': 'weibo',
+      'bilibili': 'bilibili',
+      'xiaohongshu': 'xiaohongshu'
+    };
+    return mapping[platform] || 'weibo';
+  }
 
   // ==================== Phase 2: 核心算法函数 ====================
 
@@ -1073,7 +1517,7 @@ export const useSimulationStore = defineStore('simulation', () => {
           historicalData
         );
 
-        // 2.8 生成UGC内容
+        // 2.8 生成UGC内容（原有逻辑）
         const sentiment = calculateCommentSentiment({
           satisfaction: adjustedMetrics.satisfaction,
           plotTagMatch: projectQuality.plotScore
@@ -1090,7 +1534,98 @@ export const useSimulationStore = defineStore('simulation', () => {
           5
         );
 
-        // 2.9 更新项目运营数据
+        // 2.9 使用内容生成引擎生成内容
+        console.log(`[Simulation] 项目 ${project.name} 开始生成内容...`);
+        const generatedContent = generateContentForProject(project);
+
+        // 应用内容生成对游戏状态的影响
+        const contentImpact = applyContentImpact(
+          generatedContent.comments,
+          generatedContent.confessions,
+          generatedContent.fanworks
+        );
+
+        // 更新声誉
+        if (contentImpact.reputationChange !== 0) {
+          operationMetrics.value.reputation = Math.max(0, Math.min(100,
+            operationMetrics.value.reputation + contentImpact.reputationChange
+          ));
+          console.log(`[Simulation] 内容影响声誉变化: ${contentImpact.reputationChange.toFixed(2)}`);
+        }
+
+        // 同步生成的内容到各个 Store
+        syncContentToStores(
+          project.id,
+          generatedContent.comments,
+          generatedContent.confessions,
+          generatedContent.fanworks
+        );
+
+        console.log(`[Simulation] 项目 ${project.name} 内容生成完成: ` +
+          `${generatedContent.comments.length}条评论, ` +
+          `${generatedContent.confessions.length}条告白, ` +
+          `${generatedContent.fanworks.length}个同人`);
+
+        // 2.10 运营事件和危机检测
+        console.log(`[Simulation] 项目 ${project.name} 执行运营事件和危机检测...`);
+        
+        // 计算负面评论比例
+        const negativeCommentRatio = generatedContent.comments.length > 0
+          ? generatedContent.comments.filter(c => c.sentiment === 'negative').length / generatedContent.comments.length
+          : 0;
+        
+        // 获取项目上线天数
+        const launchDate = project.launchDate ? new Date(project.launchDate) : new Date();
+        const daySinceLaunch = Math.max(1, Math.floor((new Date().getTime() - launchDate.getTime()) / (1000 * 60 * 60 * 24)));
+        
+        // 检测运营事件
+        const incidentResult = checkIncidentTrigger(
+          projectQuality.totalScore,
+          adjustedMetrics.satisfaction,
+          negativeCommentRatio,
+          daySinceLaunch
+        );
+        
+        if (incidentResult.triggered && incidentResult.incidentType && incidentResult.severity) {
+          console.log(`[Simulation] 项目 ${project.name} 触发运营事件: ${incidentResult.incidentType}, 严重程度: ${incidentResult.severity}`);
+          dailyIncidents.value.push(incidentResult);
+          
+          // 触发实际事件
+          const operationStore = useOperationStore();
+          operationStore.triggerIncidentBySimulation(
+            projectQuality.totalScore,
+            adjustedMetrics.satisfaction,
+            negativeCommentRatio,
+            daySinceLaunch
+          );
+        }
+        
+        // 检测危机
+        const recentNegativeIncidentCount = dailyIncidents.value.length;
+        const crisisResult = checkCrisisTrigger(
+          platformStatistics.heat,
+          operationMetrics.value.reputation,
+          recentNegativeIncidentCount,
+          adjustedMetrics.satisfaction,
+          projectQuality.totalScore
+        );
+        
+        if (crisisResult.triggered && crisisResult.crisisType && crisisResult.level) {
+          console.log(`[Simulation] 项目 ${project.name} 触发危机: ${crisisResult.crisisType}, 等级: ${crisisResult.level}`);
+          dailyCrises.value.push(crisisResult);
+          
+          // 创建危机实例
+          const crisis = createCrisisInstance(crisisResult.crisisType, crisisResult.level);
+          if (crisis) {
+            activeCrises.value.push(crisis);
+            
+            // 应用危机影响
+            const crisisImpact = applyCrisisImpact(crisis);
+            console.log(`[Simulation] 危机影响: 声誉${crisisImpact.reputationChange}, 玩家${crisisImpact.playerChange}`);
+          }
+        }
+
+        // 2.10 更新项目运营数据
         const operationData: ProjectOperationData = {
           projectId: project.id,
           satisfaction: adjustedMetrics.satisfaction,
@@ -1193,10 +1728,35 @@ export const useSimulationStore = defineStore('simulation', () => {
       // 14. 更新情感分布（基于所有项目评论）
       updateSentimentDistribution();
 
+      // 15. 汇总并更新每日内容生成统计
+      console.log('[Simulation] 汇总每日内容生成统计...');
+      const allGeneratedComments: GeneratedComment[] = [];
+      const allGeneratedConfessions: GeneratedConfession[] = [];
+      const allGeneratedFanworks: GeneratedFanwork[] = [];
+
+      operatingProjects.forEach(project => {
+        const content = generateContentForProject(project);
+        allGeneratedComments.push(...content.comments);
+        allGeneratedConfessions.push(...content.confessions);
+        allGeneratedFanworks.push(...content.fanworks);
+      });
+
+      updateDailyContentStats(
+        allGeneratedComments,
+        allGeneratedConfessions,
+        allGeneratedFanworks
+      );
+
+      console.log(`[Simulation] 今日内容生成统计: ` +
+        `${dailyContentStats.value.comments}条评论, ` +
+        `${dailyContentStats.value.confessions}条告白, ` +
+        `${dailyContentStats.value.fanworks}个同人`);
+
       return {
         day: currentDay.value,
         projectResults,
-        globalMetrics: globalMetrics.value
+        globalMetrics: globalMetrics.value,
+        contentStats: dailyContentStats.value
       };
     } catch (e) {
       error.value = e instanceof Error ? e.message : '模拟运行失败';
@@ -1741,6 +2301,20 @@ function getHistory(): SimulationResult[] {
     };
     projectComments.value = new Map();
     projectConfessions.value = new Map();
+    // 重置内容生成相关状态
+    dailyContentStats.value = {
+      comments: 0,
+      confessions: 0,
+      fanworks: 0,
+      hotComments: [],
+      hotConfessions: [],
+      hotFanworks: []
+    };
+    contentGenerationHistory.value = [];
+    // 重置运营事件和危机状态
+    dailyIncidents.value = [];
+    dailyCrises.value = [];
+    activeCrises.value = [];
     localStorage.removeItem('simulation_data');
   }
 
@@ -1776,6 +2350,9 @@ function getHistory(): SimulationResult[] {
     dailyEventEngine,
     triggeredEvents,
     pendingNeutralEvents,
+    // 内容生成相关导出
+    dailyContentStats,
+    contentGenerationHistory,
     initialize,
     tick,
     getHistory,
@@ -1794,6 +2371,10 @@ function getHistory(): SimulationResult[] {
     loadFromLocal,
     reset,
     // Phase 5: 事件处理函数
-    handleNeutralEventChoice
+    handleNeutralEventChoice,
+    // 内容生成相关函数
+    generateContentForProject,
+    applyContentImpact,
+    syncContentToStores
   };
 });

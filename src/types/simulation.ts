@@ -164,10 +164,20 @@ export interface CommentSentiment {
 }
 
 /**
+ * 内容生成统计
+ */
+export interface ContentGenerationStats {
+  comments: number;
+  confessions: number;
+  fanworks: number;
+}
+
+/**
  * 模拟结果
  */
 export interface SimulationTickResult {
   day: number;
   projectResults: ProjectSimulationResult[];
   globalMetrics: GlobalMetrics;
+  contentStats?: ContentGenerationStats;
 }

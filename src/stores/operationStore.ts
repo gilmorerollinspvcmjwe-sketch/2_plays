@@ -612,6 +612,67 @@ export const useOperationStore = defineStore('operation', () => {
   }
   
   /**
+   * 基于模拟数据触发运营事件
+   * @param projectQuality 项目质量
+   * @param satisfaction 玩家满意度
+   * @param negativeCommentRatio 负面评论比例
+   * @param daySinceLaunch 上线天数
+   * @returns 触发结果
+   */
+  function triggerIncidentBySimulation(
+    projectQuality: number,
+    satisfaction: number,
+    negativeCommentRatio: number,
+    daySinceLaunch: number
+  ): { triggered: boolean; incident?: OperationIncident } {
+    // 导入触发引擎
+    const { checkIncidentTrigger } = require('@/engine/eventTriggerEngine');
+    
+    // 检查是否触发
+    const result = checkIncidentTrigger(
+      projectQuality,
+      satisfaction,
+      negativeCommentRatio,
+      daySinceLaunch
+    );
+    
+    if (!result.triggered || !result.incidentType || !result.severity) {
+      return { triggered: false };
+    }
+    
+    // 根据条件选择事件类型和严重程度
+    const template = generateRandomIncident(result.incidentType, result.severity);
+    const incident: OperationIncident = {
+      ...template,
+      status: 'pending',
+      createdAt: new Date().toISOString()
+    };
+    
+    incidents.value.unshift(incident);
+    
+    // 应用负面影响
+    applyIncidentNegativeImpact(incident);
+    
+    saveToLocal();
+    
+    return { triggered: true, incident };
+  }
+  
+  /**
+   * 应用事件负面影响
+   */
+  function applyIncidentNegativeImpact(incident: OperationIncident): void {
+    // 根据严重程度降低声誉
+    if (incident.severity === '高') {
+      stats.value.reputation = Math.max(0, stats.value.reputation - 10);
+    } else if (incident.severity === '中') {
+      stats.value.reputation = Math.max(0, stats.value.reputation - 5);
+    } else {
+      stats.value.reputation = Math.max(0, stats.value.reputation - 2);
+    }
+  }
+  
+  /**
    * 处理运营事件
    */
   async function handleIncident(incidentId: string, solution: IncidentSolution): Promise<{ success: boolean; message: string }> {
@@ -880,14 +941,26 @@ export const useOperationStore = defineStore('operation', () => {
       };
       events.value.push(defaultEvent);
       
-      // 触发一个初始事件
-      triggerRandomIncident();
+      // 不再自动触发初始事件，等待模拟系统根据数据触发
+      // triggerRandomIncident();
+      
+      // 清空现有运营事件（确保新游戏开始时没有遗留事件）
+      clearAllIncidents();
       
       // 设置标志位
       hasInitializedDefaults.value = true;
       
       saveToLocal();
     }
+  }
+  
+  /**
+   * 清空所有运营事件
+   */
+  function clearAllIncidents(): void {
+    incidents.value = [];
+    saveToLocal();
+    console.log('[OperationStore] 已清空所有运营事件');
   }
   
   /**
@@ -1708,6 +1781,8 @@ export const useOperationStore = defineStore('operation', () => {
     calculateEventImpact,
     quickCreateRandomEvent,
     triggerRandomIncident,
+    triggerIncidentBySimulation,
+    applyIncidentNegativeImpact,
     handleIncident,
     sendWelfare,
     simulateOneDay,
@@ -1720,6 +1795,7 @@ export const useOperationStore = defineStore('operation', () => {
     saveToLocal,
     loadFromLocal,
     initDefaultData,
+    clearAllIncidents,
     
     // 生日相关
     checkTodayBirthdays,

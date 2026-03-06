@@ -1,6 +1,7 @@
 <template>
-  <div class="sign-in-calendar">
-    <div class="calendar-header">
+  <div class="sign-in-calendar" :class="{ embedded: embedded }">
+    <!-- 非嵌入式显示头部 -->
+    <div v-if="!embedded" class="calendar-header">
       <div class="header-left">
         <h3 class="calendar-title">📅 签到日历</h3>
         <div class="stats-row">
@@ -24,6 +25,38 @@
           {{ checkedInToday ? '已签到' : '签到' }}
         </van-button>
       </div>
+    </div>
+
+    <!-- 嵌入式显示简化头部 -->
+    <div v-if="embedded" class="embedded-header">
+      <div class="reward-preview-compact">
+        <span class="preview-title">连续签到奖励</span>
+        <div class="reward-days-compact">
+          <div
+            v-for="day in 7"
+            :key="day"
+            class="reward-dot"
+            :class="{ 
+              active: dayInCycle >= day,
+              special: day === 7,
+              current: dayInCycle + 1 === day && !checkedInToday
+            }"
+          >
+            <span class="dot-day">{{ day }}</span>
+            <van-icon v-if="dayInCycle >= day" name="success" class="dot-check" />
+          </div>
+        </div>
+      </div>
+      <van-button
+        v-if="!checkedInToday"
+        type="primary"
+        size="small"
+        round
+        color="linear-gradient(135deg, #FF69B4, #FF1493)"
+        @click="handleCheckIn"
+      >
+        签到
+      </van-button>
     </div>
 
     <div class="reward-preview">
@@ -112,6 +145,16 @@ interface RewardInfo {
   consecutiveDays: number;
   reward: SignInReward;
 }
+
+// Props
+const props = defineProps<{
+  embedded?: boolean;
+}>();
+
+// Emits
+const emit = defineEmits<{
+  (e: 'signin-success', result: { consecutiveDays: number; reward: SignInReward }): void;
+}>();
 
 const pointsStore = usePointsStore();
 
@@ -207,10 +250,19 @@ function nextMonth() {
 
 async function handleCheckIn() {
   const result = await pointsStore.checkIn();
-  
+
   if (result.success) {
     rewardInfo.value = result as RewardInfo;
-    showRewardPopup.value = true;
+
+    // 如果是嵌入式模式，触发事件让父组件处理弹窗
+    if (props.embedded) {
+      emit('signin-success', {
+        consecutiveDays: result.consecutiveDays || pointsStore.consecutiveSignInDays,
+        reward: result.reward || { points: 10 }
+      });
+    } else {
+      showRewardPopup.value = true;
+    }
   } else {
     showToast(result.message);
   }
@@ -229,6 +281,78 @@ onMounted(() => {
   border-radius: 16px;
   padding: 16px;
   margin-bottom: 16px;
+
+  &.embedded {
+    background: transparent;
+    padding: 0;
+    margin-bottom: 0;
+  }
+}
+
+// 嵌入式模式头部样式
+.embedded-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.reward-preview-compact {
+  flex: 1;
+}
+
+.preview-title {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.reward-days-compact {
+  display: flex;
+  gap: 6px;
+}
+
+.reward-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+
+  &.active {
+    background: linear-gradient(135deg, #FFB6C1, #FF69B4);
+  }
+
+  &.special {
+    background: linear-gradient(135deg, #FFD700, #FFA500);
+  }
+
+  &.current {
+    border: 2px solid #FF69B4;
+    box-shadow: 0 0 8px rgba(255, 105, 180, 0.4);
+  }
+}
+
+.dot-day {
+  font-size: 11px;
+  color: #666;
+  font-weight: 500;
+
+  .reward-dot.active &,
+  .reward-dot.special & {
+    color: white;
+  }
+}
+
+.dot-check {
+  position: absolute;
+  font-size: 10px;
+  color: white;
 }
 
 .calendar-header {

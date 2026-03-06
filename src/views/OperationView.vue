@@ -12,6 +12,20 @@
       @simulate-day="handleSimulateDay"
     />
 
+    <!-- 玩家社区分析入口 -->
+    <div class="community-analysis-section">
+      <van-cell
+        title="玩家社区分析"
+        label="查看玩家数据、情感分析、运营建议"
+        is-link
+        @click="showCommunityAnalysis = true"
+      >
+        <template #icon>
+          <div class="analysis-icon">📊</div>
+        </template>
+      </van-cell>
+    </div>
+
     <!-- Tab 切换 -->
     <van-tabs v-model="activeTab" class="operation-tabs">
       <van-tab title="卡池管理">
@@ -619,6 +633,23 @@
       </div>
     </van-popup>
 
+    <!-- 玩家社区分析弹窗 -->
+    <van-popup
+      v-model:show="showCommunityAnalysis"
+      position="bottom"
+      round
+      :style="{ height: '80%' }"
+      class="community-analysis-popup"
+    >
+      <div class="popup-header">
+        <h3>📊 玩家社区分析</h3>
+        <van-icon name="cross" size="20" @click="showCommunityAnalysis = false" />
+      </div>
+      <div class="popup-content">
+        <PlayerSegments />
+      </div>
+    </van-popup>
+
     <!-- 处理事件弹窗 -->
     <van-dialog
       v-model:show="showHandleIncident"
@@ -687,6 +718,7 @@ import FanCreationSquare from '@/components/social/FanCreationSquare.vue';
 import MarketDashboard from '@/components/market/MarketDashboard.vue';
 import CrisisAlert from '@/components/crisis/CrisisAlert.vue';
 import OperationPredictionPanel from '@/components/operation/OperationPredictionPanel.vue';
+import PlayerSegments from '@/components/community/PlayerSegments.vue';
 import type { Crisis, CrisisResolution } from '@/types/crisis';
 import type { OperationDecision, OperationPrediction } from '@/stores/operationStore';
 
@@ -801,6 +833,7 @@ const showHandleIncident = ref(false);
 const showTemplateSelector = ref(false);
 const showGachaSimulator = ref(false);
 const showPredictionPanel = ref(false);
+const showCommunityAnalysis = ref(false);
 const selectedIncident = ref<{ id: string } | null>(null);
 const selectedSolution = ref<{ action: string; cost: string; effect: string } | null>(null);
 
@@ -1307,24 +1340,8 @@ onMounted(() => {
   operationStore.loadTrackedEffects();
   loadPredictionComparisons();
 
-  // 初始化危机数据（模拟）
-  crises.value = [
-    {
-      id: '1',
-      type: 'server',
-      level: 'moderate',
-      title: '服务器波动',
-      description: '部分玩家反映登录困难',
-      status: 'pending',
-      heat: 65,
-      sentiment: -0.3,
-      affectedUsers: 1200,
-      options: [
-        { id: '1', text: '紧急修复', cost: 100, successRate: 0.8 },
-        { id: '2', text: '发布补偿公告', cost: 50, successRate: 0.6 }
-      ]
-    }
-  ];
+  // 危机数据由模拟系统根据游戏状态自动生成，不初始化默认危机
+  crises.value = [];
 
   // 解析URL参数并预填充表单
   handleUrlParams();
@@ -1427,6 +1444,49 @@ onUnmounted(() => {
   background: linear-gradient(180deg, #FFF5F7 0%, #FFE4E8 100%);
   padding: 16px;
   padding-bottom: 80px;
+}
+
+// 玩家社区分析入口样式
+.community-analysis-section {
+  margin: 16px 0;
+  
+  :deep(.van-cell) {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  }
+  
+  .analysis-icon {
+    font-size: 24px;
+    margin-right: 12px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+// 社区分析弹窗样式
+.community-analysis-popup {
+  .popup-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    background: white;
+    
+    h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: bold;
+    }
+  }
+  
+  .popup-content {
+    height: calc(100% - 60px);
+    overflow-y: auto;
+    padding: 16px;
+    background: #f5f5f5;
+  }
 }
 
 .operation-tabs {
