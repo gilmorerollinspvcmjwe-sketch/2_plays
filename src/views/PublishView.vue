@@ -38,7 +38,7 @@
           size="small"
           round
           color="linear-gradient(to right, #FF69B4, #FFB6C1)"
-          @click="$router.push('/creator/character')"
+          @click="goToCreateCharacter"
         >
           去创建游戏
         </van-button>
@@ -151,11 +151,13 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue';
+import { useRouter } from 'vue-router';
 import { useGameStore, type Game } from '@/stores/gameStore';
 import { usePointsStore } from '@/stores/points';
 import { showToast, showDialog } from 'vant';
 import CelebrationAnimation from '@/components/animations/CelebrationAnimation.vue';
 
+const router = useRouter();
 const gameStore = useGameStore();
 const pointsStore = usePointsStore();
 
@@ -217,6 +219,16 @@ async function handlePublish() {
 
       publishing.value = false;
     }, 1500);
+  }
+}
+
+// 去创建角色页面
+async function goToCreateCharacter() {
+  try {
+    await router.push('/creator/character');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
   }
 }
 

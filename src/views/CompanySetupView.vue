@@ -199,7 +199,7 @@ function nextStep() {
   currentStep.value++;
 }
 
-function createCompany() {
+async function createCompany() {
   if (!companyForm.name.trim()) {
     showToast('请输入公司名称');
     return;
@@ -212,7 +212,12 @@ function createCompany() {
   );
 
   showToast('公司创立成功！');
-  router.push('/');
+  try {
+    await router.push('/');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 </script>
 

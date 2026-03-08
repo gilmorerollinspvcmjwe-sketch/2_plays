@@ -36,6 +36,80 @@
       </div>
     </div>
 
+    <!-- 每日任务（可折叠） -->
+    <div class="task-section">
+      <div class="task-header" @click="toggleTaskSection">
+        <div class="task-info">
+          <van-icon name="todo-list-o" size="20" color="#FF69B4" />
+          <span class="task-title">每日任务</span>
+          <van-tag v-if="taskStore.allDailyCompleted" type="success" round size="small">已完成</van-tag>
+          <van-tag v-else color="#FF69B4" round size="small">
+            {{ taskStore.dailyProgress.current }}/{{ taskStore.dailyProgress.total }}
+          </van-tag>
+        </div>
+        <div class="task-meta">
+          <van-icon :name="isTaskExpanded ? 'arrow-up' : 'arrow-down'" color="#999" />
+        </div>
+      </div>
+      
+      <!-- 展开时显示任务列表 -->
+      <div v-if="isTaskExpanded" class="task-list">
+        <div 
+          v-for="task in taskStore.dailyTasks" 
+          :key="task.id" 
+          class="task-item"
+          :class="{ completed: task.completed }"
+        >
+          <div class="task-item-info">
+            <van-icon v-if="task.completed" name="success" color="#07c160" />
+            <van-icon v-else name="circle" color="#ccc" />
+            <div class="task-item-text">
+              <span class="task-item-name">{{ task.title }}</span>
+              <span class="task-item-desc">{{ task.description }}</span>
+            </div>
+          </div>
+          
+          <div class="task-item-reward">
+            <template v-if="task.reward.gold">
+              <span class="reward-gold">+{{ task.reward.gold }}💰</span>
+            </template>
+            <template v-if="task.reward.diamond">
+              <span class="reward-diamond">+{{ task.reward.diamond }}💎</span>
+            </template>
+          </div>
+
+          <van-button 
+            v-if="task.completed && !task.claimed"
+            size="mini"
+            type="primary"
+            @click="handleClaimTask(task.id)"
+          >
+            领取
+          </van-button>
+          <van-button 
+            v-else-if="task.claimed"
+            size="mini"
+            disabled
+          >
+            已领取
+          </van-button>
+        </div>
+        
+        <!-- 全部完成奖励 -->
+        <div v-if="taskStore.allDailyCompleted && !allTasksClaimed" class="all-complete-bonus">
+          <van-button 
+            type="primary" 
+            size="small" 
+            block
+            color="linear-gradient(135deg, #FF69B4, #FF1493)"
+            @click="handleClaimAllTasks"
+          >
+            领取全部奖励 (+50💎)
+          </van-button>
+        </div>
+      </div>
+    </div>
+
     <!-- 快捷签到（可折叠） -->
     <div class="signin-section">
       <div class="signin-header" @click="toggleSignInCalendar">
@@ -141,6 +215,7 @@ import { useRouter } from 'vue-router';
 import { usePointsStore, type SignInReward } from '@/stores/points';
 import { useCreatorGrowthStore } from '@/stores/creatorGrowth';
 import { useCompanyStore } from '@/stores/companyStore';
+import { useTaskStore } from '@/stores/taskStore';
 import SignInCalendar from '@/components/signin/SignInCalendar.vue';
 import { showToast } from 'vant';
 
@@ -148,11 +223,47 @@ const router = useRouter();
 const pointsStore = usePointsStore();
 const creatorStore = useCreatorGrowthStore();
 const companyStore = useCompanyStore();
+const taskStore = useTaskStore();
 
 const currentTitle = computed(() => pointsStore.currentTitle);
 
+// 任务展开状态
+const isTaskExpanded = ref(false);
+
 // 签到日历展开状态
 const isSignInExpanded = ref(false);
+
+// 计算是否所有任务都已领取
+const allTasksClaimed = computed(() => {
+  return taskStore.dailyTasks.every(t => t.claimed);
+});
+
+// 切换任务展开状态
+function toggleTaskSection() {
+  isTaskExpanded.value = !isTaskExpanded.value;
+}
+
+// 领取单个任务奖励
+function handleClaimTask(taskId: string) {
+  const reward = taskStore.claimReward(taskId);
+  if (reward) {
+    showToast({
+      message: `获得 ${reward.gold ? reward.gold + '金币' : ''} ${reward.diamond ? reward.diamond + '钻石' : ''}`,
+      icon: 'success'
+    });
+  }
+}
+
+// 领取全部任务奖励
+function handleClaimAllTasks() {
+  const reward = taskStore.claimAllDailyRewards();
+  if (reward.gold > 0 || reward.diamond > 0) {
+    showToast({
+      message: `获得 ${reward.gold}金币 ${reward.diamond}钻石`,
+      icon: 'success'
+    });
+  }
+}
 
 // 签到奖励弹窗
 const showRewardPopup = ref(false);
@@ -189,13 +300,23 @@ function onSignInSuccess(result: { consecutiveDays: number; reward: SignInReward
 }
 
 // 跳转到创作者中心
-function goToCreatorCenter() {
-  router.push('/creator-center');
+async function goToCreatorCenter() {
+  try {
+    await router.push('/creator-center');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 // 跳转到积分商城
-function goToPointsShop() {
-  router.push('/points');
+async function goToPointsShop() {
+  try {
+    await router.push('/points');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 function formatNumber(num: number): string {
@@ -305,6 +426,107 @@ function formatNumber(num: number): string {
     font-size: 12px;
     color: #999;
   }
+}
+
+.task-section {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+}
+
+.task-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-list {
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 12px;
+}
+
+.task-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f7f8fa;
+  
+  &:last-child {
+    border-bottom: none;
+  }
+  
+  &.completed {
+    .task-item-name {
+      color: #07c160;
+    }
+  }
+}
+
+.task-item-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-item-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.task-item-name {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.task-item-desc {
+  font-size: 12px;
+  color: #999;
+}
+
+.task-item-reward {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+  
+  .reward-gold {
+    color: #ff976a;
+    font-size: 12px;
+  }
+  
+  .reward-diamond {
+    color: #1989fa;
+    font-size: 12px;
+  }
+}
+
+.all-complete-bonus {
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
 }
 
 .signin-section {

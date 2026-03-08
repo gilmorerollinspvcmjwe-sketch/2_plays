@@ -129,6 +129,16 @@
         @cancel="showPositioningPicker = false"
       />
     </van-popup>
+
+    <!-- 新手引导 -->
+    <OnboardingGuide />
+    
+    <!-- 每日总结弹窗 -->
+    <DailySummary 
+      v-model:show="showDailySummary"
+      :report="dailyReport"
+      @continue="handleDailySummaryClose"
+    />
   </div>
 </template>
 
@@ -138,14 +148,23 @@ import { useRouter } from 'vue-router';
 import { showToast } from 'vant';
 import { useProjectStore } from '@/stores/projectStore';
 import { useEmployeeStore } from '@/stores/employeeStore';
+import { useSimulationStore } from '@/stores/simulationStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useTaskStore } from '@/stores/taskStore';
 import CompanyDashboard from '@/components/project/CompanyDashboard.vue';
 import ProjectCard from '@/components/project/ProjectCard.vue';
+import DailySummary from '@/components/report/DailySummary.vue';
+import OnboardingGuide from '@/components/OnboardingGuide.vue';
 import type { ProjectPositioning } from '@/types/project';
 import { PROJECT_POSITIONING_CONFIG } from '@/types/project';
+import type { DailyReport } from '@/stores/taskStore';
 
 const router = useRouter();
 const projectStore = useProjectStore();
 const employeeStore = useEmployeeStore();
+const simulationStore = useSimulationStore();
+const onboardingStore = useOnboardingStore();
+const taskStore = useTaskStore();
 
 // 公司信息
 const companyName = ref('我的游戏公司');
@@ -154,6 +173,10 @@ const companyLevel = ref(1);
 // 创建项目弹窗
 const showCreateProject = ref(false);
 const showPositioningPicker = ref(false);
+
+// 每日总结弹窗
+const showDailySummary = ref(false);
+const dailyReport = ref<DailyReport | null>(null);
 
 const newProject = ref({
   name: '',
@@ -271,12 +294,43 @@ function getProjectPendingCount(projectId: string): number {
   return pendingTasks.value.filter(t => t.projectId === projectId).length;
 }
 
-// 市场动态
-const marketNews = ref([
-  { type: 'primary' as const, tag: '趋势', text: '甜宠题材近期热度上升 +15%' },
-  { type: 'warning' as const, tag: '竞品', text: '《恋与制作人》开启周年庆活动' },
-  { type: 'success' as const, tag: '机会', text: '悬疑解谜类乙游市场空白' }
-]);
+// 市场动态 - 从 simulationStore 获取实时数据
+const marketNews = computed(() => {
+  const trends = simulationStore.worldSimulator?.getGenreTrends?.() || [];
+  const news = [];
+  
+  // 从市场趋势生成动态
+  if (trends.length > 0) {
+    const topTrend = trends[0];
+    news.push({
+      type: 'primary' as const,
+      tag: '趋势',
+      text: `${topTrend.genreName}题材热度${topTrend.growthRate > 0 ? '上升' : '下降'} ${Math.abs(topTrend.growthRate || 0).toFixed(0)}%`
+    });
+  }
+  
+  // 从竞品动态生成
+  const competitorNews = simulationStore.competitorNews;
+  if (competitorNews && competitorNews.length > 0) {
+    const latest = competitorNews[competitorNews.length - 1];
+    news.push({
+      type: 'warning' as const,
+      tag: '竞品',
+      text: `${latest.companyName}${latest.title}`
+    });
+  }
+  
+  // 从市场机会生成
+  if (simulationStore.marketOpportunity) {
+    news.push({
+      type: 'success' as const,
+      tag: '机会',
+      text: simulationStore.marketOpportunity.analysis || '市场机会待挖掘'
+    });
+  }
+  
+  return news;
+});
 
 // 方法
 function onPositioningConfirm({ selectedOptions }: { selectedOptions: { text: string; value: ProjectPositioning }[] }) {
@@ -284,7 +338,7 @@ function onPositioningConfirm({ selectedOptions }: { selectedOptions: { text: st
   showPositioningPicker.value = false;
 }
 
-function handleCreateProject() {
+async function handleCreateProject() {
   if (!newProject.value.name.trim()) {
     showToast('请输入项目名称');
     return;
@@ -323,41 +377,66 @@ function handleCreateProject() {
   };
 
   // 跳转到项目详情
-  router.push(`/project/${project.id}`);
-}
-
-function goToProject(projectId: string) {
-  router.push(`/project/${projectId}`);
-}
-
-function handlePendingTask(task: PendingTask) {
-  projectStore.setCurrentProject(task.projectId);
-
-  switch (task.type) {
-    case 'character':
-      router.push('/creator/character');
-      break;
-    case 'plot':
-      router.push('/creator/plot');
-      break;
-    case 'team':
-      router.push('/team-management');
-      break;
-    case 'development':
-      // 跳转到项目详情页，用户可以在那里点击开始开发
-      router.push(`/project/${task.projectId}`);
-      break;
-    default:
-      router.push(`/project/${task.projectId}`);
+  try {
+    await router.push(`/project/${project.id}`);
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
   }
 }
 
-function goToTeamManagement() {
-  router.push('/team-management');
+async function goToProject(projectId: string) {
+  try {
+    await router.push(`/project/${projectId}`);
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToRecruit() {
-  router.push('/recruit');
+async function handlePendingTask(task: PendingTask) {
+  projectStore.setCurrentProject(task.projectId);
+
+  try {
+    switch (task.type) {
+      case 'character':
+        await router.push('/creator/character');
+        break;
+      case 'plot':
+        await router.push('/creator/plot');
+        break;
+      case 'team':
+        await router.push('/team-management');
+        break;
+      case 'development':
+        // 跳转到项目详情页，用户可以在那里点击开始开发
+        await router.push(`/project/${task.projectId}`);
+        break;
+      default:
+        await router.push(`/project/${task.projectId}`);
+    }
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
+async function goToTeamManagement() {
+  try {
+    await router.push('/team-management');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
+async function goToRecruit() {
+  try {
+    await router.push('/recruit');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 // 初始化
@@ -365,7 +444,22 @@ onMounted(() => {
   // 初始化默认项目和员工
   projectStore.initDefaultProject();
   employeeStore.initDefaultEmployees();
+  
+  // 触发每日登录任务（taskStore 已在 loadFromLocal 中自动初始化）
+  taskStore.updateTaskProgress('daily_login');
+  
+  // 监听每日结算，显示每日总结弹窗
+  simulationStore.setDailyReportCallback((report) => {
+    dailyReport.value = report;
+    showDailySummary.value = true;
+  });
 });
+
+// 处理每日总结弹窗关闭
+function handleDailySummaryClose() {
+  showDailySummary.value = false;
+  dailyReport.value = null;
+}
 </script>
 
 <style scoped>

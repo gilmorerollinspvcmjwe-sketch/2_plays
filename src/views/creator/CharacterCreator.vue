@@ -721,6 +721,7 @@ import { useRouter } from 'vue-router';
 import { TemplateManager } from '@/utils/templateManager';
 import { usePointsStore } from '@/stores/points';
 import { useGameStore, type ArtStyle, type VoiceActorLevel, type CharacterBirthday } from '@/stores/gameStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useCreatorGrowthStore, SKILL_EFFECTS } from '@/stores/creatorGrowth';
 import { showToast, showDialog } from 'vant';
@@ -730,6 +731,7 @@ import { generatePersonality, generateBehavior, generateSampleDialogue } from '@
 const router = useRouter();
 const projectStore = useProjectStore();
 const creatorStore = useCreatorGrowthStore();
+const taskStore = useTaskStore();
 const currentStep = ref(0);
 const selectedAppearance = ref<any>(null);
 const selectedClothing = ref<any>(null);
@@ -898,14 +900,9 @@ const dayColumns = computed(() => {
   }));
 });
 
-const appearanceOptions = ref([
-  { id: '1', label: '剑眉星目', description: '英气逼人，眼神锐利，气质冷峻' },
-  { id: '2', label: '温润如玉', description: '温和儒雅，如沐春风，气质温润' },
-  { id: '3', label: '冷峻棱角', description: '轮廓深邃，气质冷峻，禁欲系' },
-  { id: '4', label: '桃花眼眸', description: '眼含笑意，桃花眼，风流倜傥' },
-  { id: '5', label: '清澈明亮', description: '眼神清澈，阳光帅气，少年感' },
-  { id: '6', label: '忧郁深邃', description: '眼神忧郁，气质深沉，文艺范' },
-]);
+const appearanceOptions = ref<any[]>([]);
+const personalityTags = ref<any[]>([]);
+const artStyles = ref<any[]>([]);
 
 const clothingOptions = ref([
   { id: '1', label: '白色衬衫 + 黑色西装', description: '正式商务风格，霸道总裁标配' },
@@ -914,25 +911,6 @@ const clothingOptions = ref([
   { id: '4', label: '白大褂 + 听诊器', description: '医生制服，禁欲系精英' },
   { id: '5', label: '篮球服 + 护腕', description: '运动风格，阳光活力' },
   { id: '6', label: '针织衫 + 围巾', description: '温暖治愈风格，温柔学长' },
-]);
-
-const personalityTags = ref([
-  { id: '1', label: '傲娇' },
-  { id: '2', label: '温柔' },
-  { id: '3', label: '高冷' },
-  { id: '4', label: '阳光' },
-  { id: '5', label: '腹黑' },
-  { id: '6', label: '病娇' },
-  { id: '7', label: '忠犬' },
-  { id: '8', label: '霸道' },
-]);
-
-const artStyles = ref([
-  { id: 'japanese' as ArtStyle, name: '日系', icon: '🌸', description: '精致细腻，大眼萌系，少女漫风格' },
-  { id: 'korean' as ArtStyle, name: '韩系', icon: '🎨', description: '时尚现代，线条流畅，都市感强' },
-  { id: 'chinese' as ArtStyle, name: '国风', icon: '🏮', description: '古典优雅，水墨韵味，仙侠风格' },
-  { id: 'realistic' as ArtStyle, name: '写实', icon: '🖼️', description: '真实质感，细节丰富，电影感' },
-  { id: 'chibi' as ArtStyle, name: 'Q版', icon: '✨', description: '可爱萌趣，头身比夸张，治愈系' },
 ]);
 
 const voiceActors = ref([
@@ -1287,7 +1265,24 @@ onMounted(() => {
   nextTick(() => {
     drawRadarChart();
   });
+
+  loadCharacterConfig();
 });
+
+const loadCharacterConfig = async () => {
+  try {
+    const config = await import('@/config/characterCreation.json');
+    appearanceOptions.value = config.appearanceOptions || [];
+    personalityTags.value = config.personalityTags || [];
+    artStyles.value = (config.artStyles || []).map((style: any) => ({
+      ...style,
+      id: style.id as ArtStyle
+    }));
+  } catch (error) {
+    console.error('加载角色创建配置失败:', error);
+    showToast('配置加载失败，使用默认配置');
+  }
+};
 
 const randomBirthday = () => {
   const randomMonth = Math.floor(Math.random() * 12) + 1;
@@ -1428,6 +1423,9 @@ const createCharacter = () => {
       showToast('角色创建成功！');
     }
 
+    // 触发每周任务进度 - 创建角色
+    taskStore.updateTaskProgress('weekly_create_character');
+
     // 显示技能加成提示
     if (artLevel > 0) {
       showToast(`美术鉴赏Lv.${artLevel}加成: 人气+${artLevel * 4}%`);
@@ -1470,22 +1468,27 @@ const createCharacter = () => {
 const emit = defineEmits(['create']);
 
 // 返回首页
-const goBack = () => {
+const goBack = async () => {
   showDialog({
     title: '确认返回',
     message: '返回首页将丢失当前未保存的进度，是否继续？',
     showCancelButton: true,
     confirmButtonText: '确认返回',
     cancelButtonText: '继续创建'
-  }).then(() => {
-    router.push('/');
+  }).then(async () => {
+    try {
+      await router.push('/');
+    } catch (error) {
+      console.error('返回首页失败:', error);
+      showToast('页面跳转失败');
+    }
   }).catch(() => {
     // 用户取消，继续创建
   });
 };
 
 // 保存并退出
-const saveAndExit = () => {
+const saveAndExit = async () => {
   if (!characterName.value.trim()) {
     showToast('请先输入角色名称');
     return;
@@ -1497,10 +1500,15 @@ const saveAndExit = () => {
     showCancelButton: true,
     confirmButtonText: '保存退出',
     cancelButtonText: '继续创建'
-  }).then(() => {
+  }).then(async () => {
     // 这里可以添加保存草稿的逻辑
     showToast('进度已保存');
-    router.push('/');
+    try {
+      await router.push('/');
+    } catch (error) {
+      console.error('返回首页失败:', error);
+      showToast('页面跳转失败');
+    }
   }).catch(() => {
     // 用户取消，继续创建
   });

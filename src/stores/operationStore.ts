@@ -701,6 +701,15 @@ export const useOperationStore = defineStore('operation', () => {
     // 奖励积分
     await pointsStore.unlockAchievement('handle_incident');
     
+    // 触发每日任务进度
+    try {
+      const { useTaskStore } = await import('./taskStore');
+      const taskStore = useTaskStore();
+      taskStore.updateTaskProgress('daily_handle_event');
+    } catch (e) {
+      console.warn('更新任务进度失败:', e);
+    }
+    
     saveToLocal();
     return { success: true, message: '事件处理成功' };
   }
@@ -895,6 +904,22 @@ export const useOperationStore = defineStore('operation', () => {
   }
   
   /**
+   * 清除本地存储的默认数据
+   */
+  function clearDefaultData(): void {
+    // 清除默认卡池和活动
+    if (gachaPools.value.some(p => p.id === 'pool_default')) {
+      gachaPools.value = gachaPools.value.filter(p => p.id !== 'pool_default');
+    }
+    if (events.value.some(e => e.id === 'event_default')) {
+      events.value = events.value.filter(e => e.id !== 'event_default');
+    }
+    hasInitializedDefaults.value = false;
+    saveToLocal();
+    console.log('[OperationStore] 已清除默认数据');
+  }
+  
+  /**
    * 初始化默认数据
    */
   function initDefaultData(): void {
@@ -903,47 +928,9 @@ export const useOperationStore = defineStore('operation', () => {
       return;
     }
     
-    // 只在真正首次加载时创建默认数据
+    // 不再创建默认卡池和活动，保持空状态
+    // 只在真正首次加载时创建基础数据结构
     if (gachaPools.value.length === 0 && events.value.length === 0) {
-      // 创建默认卡池
-      const defaultPool: GachaPool = {
-        id: `pool_default`,
-        name: '新手限定池',
-        upCharacters: ['霸道总裁 - 陆沉', '温柔学长 - 许墨'],
-        rates: { ssr: 2, sr: 8, r: 90 },
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 7 * 86400000).toISOString(),
-        budget: '中',
-        totalDraws: 0,
-        revenue: 0,
-        status: 'ongoing',
-        gachaResults: [],
-        ssrCount: 0,
-        srCount: 0,
-        rCount: 0,
-        averagePity: 0
-      };
-      gachaPools.value.push(defaultPool);
-      
-      // 创建默认活动
-      const defaultEvent: GameEvent = {
-        id: `event_default`,
-        type: 'festival',
-        name: '开服庆典',
-        description: '庆祝游戏正式上线，登录即可领取丰厚奖励',
-        startTime: new Date().toISOString(),
-        endTime: new Date(Date.now() + 14 * 86400000).toISOString(),
-        rewards: ['钻石 x1000', '限定头像框', 'SR 角色卡'],
-        mechanics: ['每日登录', '完成任务'],
-        budget: '高',
-        participants: 0,
-        status: 'ongoing'
-      };
-      events.value.push(defaultEvent);
-      
-      // 不再自动触发初始事件，等待模拟系统根据数据触发
-      // triggerRandomIncident();
-      
       // 清空现有运营事件（确保新游戏开始时没有遗留事件）
       clearAllIncidents();
       
@@ -1756,8 +1743,9 @@ export const useOperationStore = defineStore('operation', () => {
     recentWelfareValue.value = 0;
   }
 
-  // 初始化时加载数据
+  // 初始化时加载数据并清除默认数据
   loadFromLocal();
+  clearDefaultData();
   
   return {
     // State

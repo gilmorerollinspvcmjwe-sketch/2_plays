@@ -216,9 +216,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { usePlayerStore, type PlayerGachaStats, type GachaBroadcast } from '@/stores/playerStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { showToast } from 'vant';
 
 const playerStore = usePlayerStore();
+const taskStore = useTaskStore();
 
 // 状态
 const isDrawing = ref(false);
@@ -286,6 +288,9 @@ const handleSingleDraw = async () => {
     animationResults.value = resultArray;
     showAnimation.value = true;
     
+    // 触发每日任务进度 - 抽卡模拟
+    taskStore.updateTaskProgress('daily_gacha');
+    
     // 等待动画展示
     setTimeout(() => {
       recentResults.value = resultArray;
@@ -309,6 +314,9 @@ const handleTenPull = async () => {
     
     animationResults.value = resultArray;
     showAnimation.value = true;
+    
+    // 触发每日任务进度 - 抽卡模拟
+    taskStore.updateTaskProgress('daily_gacha');
     
     // 等待动画展示
     setTimeout(() => {

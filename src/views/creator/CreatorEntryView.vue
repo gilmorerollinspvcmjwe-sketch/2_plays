@@ -145,29 +145,54 @@ function getStatusText(status: string): string {
   return texts[status] || status;
 }
 
-function goToHome() {
-  router.push('/');
+async function goToHome() {
+  try {
+    await router.push('/');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToCharacterCreator() {
+async function goToCharacterCreator() {
   if (!currentProject.value) return;
   projectStore.setCurrentProject(currentProject.value.id);
-  router.push('/creator/character');
+  try {
+    await router.push('/creator/character');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToPlotDesigner() {
+async function goToPlotDesigner() {
   if (!currentProject.value) return;
   projectStore.setCurrentProject(currentProject.value.id);
-  router.push('/creator/plot');
+  try {
+    await router.push('/creator/plot');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToPlotAnalysis() {
+async function goToPlotAnalysis() {
   if (!currentProject.value) return;
-  router.push(`/plot-analysis/${currentProject.value.id}`);
+  try {
+    await router.push(`/plot-analysis/${currentProject.value.id}`);
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToCharacterRanking() {
-  router.push('/character-ranking');
+async function goToCharacterRanking() {
+  try {
+    await router.push('/character-ranking');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 </script>
 

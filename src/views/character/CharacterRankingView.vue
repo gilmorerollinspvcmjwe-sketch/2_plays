@@ -153,12 +153,17 @@ function getRankClass(index: number): string {
 }
 
 // 查看角色详情
-function viewCharacter(characterId: string) {
+async function viewCharacter(characterId: string) {
   // 找到角色所在的项目
   for (const project of projectStore.projects) {
     const character = project.characters.find(c => c.id === characterId);
     if (character) {
-      router.push(`/game/${project.id}/character/${characterId}`);
+      try {
+        await router.push(`/game/${project.id}/character/${characterId}`);
+      } catch (error) {
+        console.error('导航失败:', error);
+        showToast('页面跳转失败');
+      }
       return;
     }
   }

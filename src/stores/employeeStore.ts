@@ -827,7 +827,7 @@ export const useEmployeeStore = defineStore('employee', () => {
           skills: { planning: 65, art: 40, program: 30, operation: 45 },
           specialty: 'plot_writing',
           trait: 'creative',
-          salary: 8000
+          salary: 6000
         },
         {
           name: '王芳',
@@ -836,7 +836,7 @@ export const useEmployeeStore = defineStore('employee', () => {
           skills: { planning: 35, art: 70, program: 25, operation: 30 },
           specialty: 'character_design',
           trait: 'creative',
-          salary: 8500
+          salary: 6500
         },
         {
           name: '张伟',
@@ -845,7 +845,7 @@ export const useEmployeeStore = defineStore('employee', () => {
           skills: { planning: 25, art: 20, program: 55, operation: 30 },
           specialty: 'frontend',
           trait: 'efficient',
-          salary: 6000
+          salary: 5500
         }
       ];
 

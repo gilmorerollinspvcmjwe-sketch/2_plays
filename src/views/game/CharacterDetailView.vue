@@ -230,8 +230,13 @@ onMounted(() => {
   }, 300);
 });
 
-function goBack() {
-  router.back();
+async function goBack() {
+  try {
+    await router.back();
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 function handleInteract() {

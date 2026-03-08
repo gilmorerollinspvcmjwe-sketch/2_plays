@@ -1,5 +1,5 @@
 <template>
-  <div class="player-segments">
+  <div class="player-segments" v-if="community">
     <!-- 头部概览 -->
     <div class="overview-section">
       <div class="overview-card total-players">

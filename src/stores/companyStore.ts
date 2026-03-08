@@ -133,6 +133,7 @@ export const useCompanyStore = defineStore('company', () => {
   
   /**
    * 升级团队成员
+   * @deprecated 此方法暂未在前端使用，待后续功能接入
    */
   function upgradeMember(memberId: string): boolean {
     if (!company.value) return false;
@@ -148,6 +149,7 @@ export const useCompanyStore = defineStore('company', () => {
   
   /**
    * 提升公司声誉
+   * @deprecated 此方法暂未在前端使用，待后续功能接入
    */
   function increaseReputation(amount: number): void {
     if (!company.value) return;
@@ -158,6 +160,7 @@ export const useCompanyStore = defineStore('company', () => {
   
   /**
    * 完成新手引导
+   * @deprecated 此方法暂未在前端使用，待后续功能接入
    */
   function completeOnboarding(): void {
     isFirstVisit.value = false;
@@ -166,6 +169,7 @@ export const useCompanyStore = defineStore('company', () => {
   
   /**
    * 检查是否完成新手引导
+   * @deprecated 此方法暂未在前端使用，待后续功能接入
    */
   function checkOnboardingStatus(): void {
     const completed = localStorage.getItem('onboarding_completed');

@@ -1,0 +1,27 @@
+{
+  "appearanceOptions": [
+    { "id": "1", "label": "剑眉星目", "description": "英气逼人，眼神锐利，气质冷峻" },
+    { "id": "2", "label": "温润如玉", "description": "温和儒雅，如沐春风，气质温润" },
+    { "id": "3", "label": "邪魅狂狷", "description": "眼神深邃，嘴角微扬，气质神秘" },
+    { "id": "4", "label": "清冷疏离", "description": "目光淡然，气质清冷，难以接近" },
+    { "id": "5", "label": "阳光开朗", "description": "笑容灿烂，眼神明亮，充满活力" },
+    { "id": "6", "label": "成熟稳重", "description": "举止得体，气质沉稳，给人安全感" }
+  ],
+  "personalityTags": [
+    { "id": "1", "label": "傲娇" },
+    { "id": "2", "label": "温柔" },
+    { "id": "3", "label": "腹黑" },
+    { "id": "4", "label": "高冷" },
+    { "id": "5", "label": "活泼" },
+    { "id": "6", "label": "内敛" },
+    { "id": "7", "label": "霸道" },
+    { "id": "8", "label": "体贴" }
+  ],
+  "artStyles": [
+    { "id": "japanese", "name": "日系", "icon": "🌸", "description": "精致细腻，大眼萌系，少女漫风格" },
+    { "id": "korean", "name": "韩系", "icon": "✨", "description": "时尚唯美，长腿欧巴，韩剧风格" },
+    { "id": "chinese", "name": "国风", "icon": "🏮", "description": "古典雅致，唯美水墨，仙侠风格" },
+    { "id": "realistic", "name": "写实", "icon": "🎨", "description": "真实自然，立体光影，电影质感" },
+    { "id": "cartoon", "name": "卡通", "icon": "🌈", "description": "简洁明快，色彩鲜艳，轻松活泼" }
+  ]
+}

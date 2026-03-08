@@ -18,7 +18,7 @@
         </van-cell-group>
 
         <div class="mt-6 text-center">
-          <van-button type="primary" block @click="router.push('/')">
+          <van-button type="primary" block @click="goToHome">
             返回首页
           </van-button>
         </div>
@@ -29,6 +29,16 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { showToast } from 'vant'
 
 const router = useRouter()
+
+async function goToHome() {
+  try {
+    await router.push('/')
+  } catch (error) {
+    console.error('导航失败:', error)
+    showToast('页面跳转失败')
+  }
+}
 </script>

@@ -18,12 +18,6 @@ import {
 } from '@/data/commentTemplates';
 import type { Player } from './playerStore';
 import { useSimulationStore } from './simulationStore';
-import { useProjectStore } from './projectStore';
-import { useGameStore } from './gameStore';
-import { usePointsStore } from './points';
-import { contentGenerationEngine, type ContentAssociation, type SentimentType } from '@/engine/contentGenerationEngine';
-import type { GenerationContext, CharacterHeat, PlotHeat, ActivityHeat, GameEvent } from '@/engine/contentGenerationEngine';
-import type { VirtualPlayer } from '@/engine/simulation/types';
 
 // 平台类型
 export type PlatformType = 'douyin' | 'xiaohongshu' | 'weibo' | 'bilibili' | 'tieba';
@@ -39,15 +33,6 @@ export interface GameComment extends CommentTemplate {
   isShared?: boolean;
   isReplied?: boolean;
   platform?: PlatformType;
-  // 关联字段
-  projectId?: string;
-  projectName?: string;
-  characterId?: string;
-  characterName?: string;
-  plotId?: string;
-  plotTitle?: string;
-  activityId?: string;
-  activityName?: string;
 }
 
 // 舆情数据
@@ -91,7 +76,6 @@ export interface GenerateParams {
   playerType: PlayerType;
   commentType: CommentType;
   count: number;
-  platform?: PlatformType;
 }
 
 // 角色提及统计
@@ -135,15 +119,36 @@ export interface CharacterReputationData {
 export const useCommentStore = defineStore('comment', () => {
   // 引入 simulationStore
   const simulationStore = useSimulationStore();
-  const pointsStore = usePointsStore();
   
   // State - store 延迟初始化
   const comments = ref<GameComment[]>([]);
   const rhythmEvents = ref<RhythmEvent[]>([]);
   
-  // 舆情数据和情感统计使用可写 ref，避免对 computed 赋值导致运行时错误
-  const publicOpinion = ref<PublicOpinion>(createPublicOpinionFromSimulation());
-  const sentimentStats = ref<SentimentStats>(createSentimentStatsFromSimulation());
+  // 从 simulationStore 获取舆情数据
+  const publicOpinion = computed<PublicOpinion>(() => ({
+    heat: simulationStore.commentMetrics?.heat || 0,
+    sentiment: simulationStore.commentMetrics?.sentiment || 0,
+    trend: (simulationStore.commentMetrics?.sentiment || 0) > 10 ? 'up' : 
+           (simulationStore.commentMetrics?.sentiment || 0) < -10 ? 'down' : 'stable',
+    triggers: simulationStore.platformStatistics ? 
+      Object.entries(simulationStore.platformStatistics.sentimentDistribution)
+        .filter(([_, count]) => count > 0)
+        .map(([sentiment]) => sentiment) : []
+  }));
+  
+  // 从 simulationStore 获取情感统计
+  const sentimentStats = computed<SentimentStats>(() => {
+    const stats = simulationStore.platformStatistics;
+    const total = stats ? stats.sentimentDistribution.positive + stats.sentimentDistribution.neutral + stats.sentimentDistribution.negative : 0;
+    return {
+      total: stats?.totalComments || 0,
+      positive: stats?.sentimentDistribution.positive || 0,
+      negative: stats?.sentimentDistribution.negative || 0,
+      neutral: stats?.sentimentDistribution.neutral || 0,
+      satisfaction: 85 + (simulationStore.commentMetrics?.sentiment || 0) * 0.15,
+      hotTags: []
+    };
+  });
   
   const isGenerating = ref(false);
   const lastGeneratedAt = ref<string | null>(null);
@@ -181,21 +186,8 @@ export const useCommentStore = defineStore('comment', () => {
     
     if (uniqueNewComments.length > 0) {
       comments.value.unshift(...uniqueNewComments);
-      updateSentimentStats();
-      updatePublicOpinion();
     }
   }, { deep: true });
-
-  watch(
-    () => [simulationStore.commentMetrics, simulationStore.platformStatistics],
-    () => {
-      if (comments.value.length === 0) {
-        publicOpinion.value = createPublicOpinionFromSimulation();
-        sentimentStats.value = createSentimentStatsFromSimulation();
-      }
-    },
-    { deep: true, immediate: true }
-  );
   
   // 平台映射函数
   function mapPlatformToUI(platform: string): PlatformType {
@@ -207,32 +199,6 @@ export const useCommentStore = defineStore('comment', () => {
       '贴吧': 'tieba'
     };
     return mapping[platform] || 'weibo';
-  }
-
-  function createPublicOpinionFromSimulation(): PublicOpinion {
-    const sentiment = simulationStore.commentMetrics?.sentiment || 0;
-    return {
-      heat: simulationStore.commentMetrics?.heat || 0,
-      sentiment,
-      trend: sentiment > 10 ? 'up' : sentiment < -10 ? 'down' : 'stable',
-      triggers: simulationStore.platformStatistics
-        ? Object.entries(simulationStore.platformStatistics.sentimentDistribution)
-            .filter(([_, count]) => count > 0)
-            .map(([sentimentKey]) => sentimentKey)
-        : []
-    };
-  }
-
-  function createSentimentStatsFromSimulation(): SentimentStats {
-    const stats = simulationStore.platformStatistics;
-    return {
-      total: stats?.totalComments || 0,
-      positive: stats?.sentimentDistribution.positive || 0,
-      negative: stats?.sentimentDistribution.negative || 0,
-      neutral: stats?.sentimentDistribution.neutral || 0,
-      satisfaction: 85 + (simulationStore.commentMetrics?.sentiment || 0) * 0.15,
-      hotTags: []
-    };
   }
   
   // Getters
@@ -444,117 +410,64 @@ export const useCommentStore = defineStore('comment', () => {
   }
   
   /**
-   * 基于模拟数据计算情感分布
-   * 使用 contentGenerationEngine 的算法
-   */
-  function calculateSentimentDistributionFromSimulation(): { positive: number; neutral: number; negative: number } {
-    const stats = simulationStore.platformStatistics;
-    if (!stats) {
-      // 没有模拟数据时返回默认分布
-      return { positive: 0.4, neutral: 0.3, negative: 0.3 };
-    }
-
-    const total = stats.sentimentDistribution.positive + stats.sentimentDistribution.neutral + stats.sentimentDistribution.negative;
-    if (total === 0) {
-      return { positive: 0.4, neutral: 0.3, negative: 0.3 };
-    }
-
-    return {
-      positive: stats.sentimentDistribution.positive / total,
-      neutral: stats.sentimentDistribution.neutral / total,
-      negative: stats.sentimentDistribution.negative / total,
-    };
-  }
-
-  /**
-   * 根据模拟数据决定情感倾向
-   * 基于当前舆情统计计算
-   */
-  function determineSentimentBySimulation(): CommentSentiment {
-    const distribution = calculateSentimentDistributionFromSimulation();
-
-    const rand = Math.random();
-    if (rand < distribution.positive) return 'positive';
-    if (rand < distribution.positive + distribution.neutral) return 'neutral';
-    return 'negative';
-  }
-
-  /**
-   * 获取当前情感比例统计
-   */
-  function getSentimentDistributionStats() {
-    const distribution = calculateSentimentDistributionFromSimulation();
-    return {
-      positive: Math.round(distribution.positive * 100),
-      neutral: Math.round(distribution.neutral * 100),
-      negative: Math.round(distribution.negative * 100),
-    };
-  }
-
-  /**
    * 生成评论
-   * 接入 contentGenerationEngine，基于模拟数据生成真实评论
    */
   async function generateNewComments(params: GenerateParams): Promise<{ success: boolean; message: string; comments?: GameComment[] }> {
+    const cost = 20; // 生成评论消耗20积分
+    const platforms: PlatformType[] = ['douyin', 'xiaohongshu', 'weibo', 'bilibili', 'tieba'];
+    
+    // 检查积分
+    if (pointsStore.balance < cost) {
+      return { success: false, message: `积分不足，需要${cost}积分` };
+    }
+    
     isGenerating.value = true;
     
     try {
-      // 从 simulationStore 获取模拟数据构建 GenerationContext
-      const context = buildGenerationContext();
-      
-      if (!context) {
+      // 消耗积分
+      const spendResult = await pointsStore.spendPoints(cost, `AI生成${params.count}条评论`);
+      if (!spendResult.success) {
         isGenerating.value = false;
-        return { success: false, message: '暂无模拟数据，请先上线项目' };
+        return { success: false, message: spendResult.message };
       }
       
-      // 创建虚拟玩家列表用于生成评论
-      const players = createVirtualPlayersForGeneration(params.count, params.playerType);
+      // 模拟AI生成延迟
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // 使用 contentGenerationEngine 生成评论
-      const result = contentGenerationEngine.generate(context, players);
-      
-      // 将生成的评论转换为 GameComment 格式
-      const newComments: GameComment[] = result.comments.map(generatedComment => {
-        const association = generatedComment.association;
-        const platform = mapEnginePlatformToUI(generatedComment.platform);
+      // 生成评论 - 使用平台评论模板
+      const newComments: GameComment[] = [];
+      for (let i = 0; i < params.count; i++) {
+        const randomPlatform = platforms[Math.floor(Math.random() * platforms.length)];
+        const platformTemplate = generatePlatformComment(randomPlatform);
         
-        return {
-          id: generatedComment.id,
-          content: generatedComment.content,
+        const comment: GameComment = {
+          id: platformTemplate.id,
+          content: platformTemplate.content,
           type: params.commentType || getRandomCommentType(),
-          sentiment: generatedComment.sentiment as CommentSentiment,
+          sentiment: platformTemplate.sentiment as CommentSentiment,
           playerType: params.playerType || getRandomPlayerType(),
-          tags: generatedComment.relatedTags,
-          platform: platform,
-          likes: Math.floor(Math.random() * 100) + 10,
-          shares: Math.floor(Math.random() * 30),
+          tags: platformTemplate.tags,
+          platform: randomPlatform,
+          likes: platformTemplate.baseLikes + Math.floor(Math.random() * 50),
+          shares: Math.floor(Math.random() * 10),
           comments: Math.floor(Math.random() * 20),
           heat: 0,
-          createdAt: new Date(generatedComment.timestamp).toISOString(),
-          isLiked: false,
-          // 关联字段
-          projectId: association.projectId,
-          projectName: association.projectName,
-          characterId: association.characterId,
-          characterName: association.characterName,
-          plotId: association.plotId,
-          plotTitle: association.plotTitle,
-          activityId: association.activityId,
-          activityName: association.activityName,
+          createdAt: new Date().toISOString(),
+          isLiked: false
         };
-      });
-      
-      // 计算热度
-      newComments.forEach(comment => {
+        
+        // 计算热度
         comment.heat = calculateCommentHeat(comment);
-      });
+        
+        newComments.push(comment);
+      }
       
       // 添加到列表
       comments.value.unshift(...newComments);
       
       // 分析评论中的角色提及并更新人气
-    const currentGameStore = useGameStore();
-    currentGameStore.analyzeCommentMentions(newComments.map(c => ({
+      const gameStore = useGameStore();
+      gameStore.analyzeCommentMentions(newComments.map(c => ({
         content: c.content,
         sentiment: c.sentiment
       })));
@@ -570,138 +483,13 @@ export const useCommentStore = defineStore('comment', () => {
       
       return { 
         success: true, 
-        message: `成功生成${newComments.length}条评论`, 
+        message: `成功生成${params.count}条评论`, 
         comments: newComments 
       };
     } catch (error) {
-      console.error('生成评论失败:', error);
       isGenerating.value = false;
       return { success: false, message: '生成评论失败，请重试' };
     }
-  }
-  
-  /**
-   * 构建生成上下文
-   * 从 simulationStore 获取数据构建 GenerationContext
-   */
-  function buildGenerationContext(): GenerationContext | null {
-    const stats = simulationStore.platformStatistics;
-    if (!stats) return null;
-
-    // 获取项目信息
-    const projectStore = useProjectStore();
-    const currentProject = projectStore.currentProject;
-
-    if (!currentProject) return null;
-
-    // 获取游戏数据
-    const gameStore = useGameStore();
-
-    // 构建角色热度信息
-    const characters: CharacterHeat[] = [];
-    const currentGame = gameStore.currentGame;
-    if (!currentGame) return null;
-
-    currentGame.characters.forEach(char => {
-      characters.push({
-        characterId: char.id,
-        characterName: char.name,
-        popularity: char.popularity?.popularity || 50,
-        intimacy: char.intimacy?.level ? (char.intimacy.level / 10) * 100 : 50,
-        plotPerformance: char.popularity?.discussionHeat || 50,
-        cpHeat: new Map(Object.entries(char.popularity?.cpHeat || {})),
-      });
-    });
-
-    // 构建剧情热度信息
-    const plots: PlotHeat[] = [];
-    currentGame.plots.forEach(plot => {
-      plots.push({
-        plotId: plot.id,
-        plotTitle: plot.title,
-        heat: 50, // 默认热度
-        sentiment: 'neutral',
-        discussionCount: 0,
-      });
-    });
-
-    // 构建活动热度信息 - 从项目数据中获取
-    const activities: ActivityHeat[] = [];
-    // 如果有运营中的活动，可以在这里添加
-
-    // 构建游戏事件
-    const recentEvents: GameEvent[] = [];
-
-    return {
-      project: currentProject,
-      metrics: {
-        rating: currentProject.metrics?.rating || 7,
-        downloads: currentProject.metrics?.totalPlayers || 0,
-        revenue: currentProject.metrics?.totalRevenue || 0,
-        dau: currentProject.metrics?.dau || 0,
-        mau: currentProject.metrics?.mau || 0,
-        retention: currentProject.metrics?.retention || { day1: 0, day7: 0, day30: 0 },
-      },
-      characters,
-      plots,
-      activities,
-      recentEvents,
-      daySinceLaunch: simulationStore.currentDay || 1,
-      playerSatisfaction: (stats.sentimentDistribution.positive / (stats.totalComments || 1)) || 0.5,
-    };
-  }
-  
-  /**
-   * 创建用于生成评论的虚拟玩家列表
-   */
-  function createVirtualPlayersForGeneration(count: number, playerType?: PlayerType): VirtualPlayer[] {
-    const players: VirtualPlayer[] = [];
-    const playStyles = ['剧情党', '强度党', 'XP党', '社交党', '咸鱼党'];
-    
-    for (let i = 0; i < count; i++) {
-      const style = playerType 
-        ? mapPlayerTypeToPlayStyle(playerType)
-        : playStyles[Math.floor(Math.random() * playStyles.length)];
-        
-      players.push({
-        id: `virtual_${Date.now()}_${i}`,
-        playStyle: style,
-        satisfaction: 0.5 + Math.random() * 0.5,
-        loyalty: 0.3 + Math.random() * 0.7,
-        activityLevel: 0.2 + Math.random() * 0.8,
-        state: 'ACTIVE',
-        lastActiveTime: Date.now(),
-      });
-    }
-    
-    return players;
-  }
-  
-  /**
-   * 将 PlayerType 映射到 playStyle
-   */
-  function mapPlayerTypeToPlayStyle(playerType: PlayerType): string {
-    const mapping: Record<PlayerType, string> = {
-      '氪金大佬': '强度党',
-      '剧情党': '剧情党',
-      '外观党': 'XP党',
-      '休闲玩家': '咸鱼党',
-    };
-    return mapping[playerType] || '剧情党';
-  }
-  
-  /**
-   * 将引擎平台类型映射到 UI 平台类型
-   */
-  function mapEnginePlatformToUI(platform: string): PlatformType {
-    const mapping: Record<string, PlatformType> = {
-      'taptap': 'tieba',
-      'appstore': 'weibo',
-      'weibo': 'weibo',
-      'bilibili': 'bilibili',
-      'xiaohongshu': 'xiaohongshu',
-    };
-    return mapping[platform] || 'weibo';
   }
   
   /**
@@ -964,7 +752,7 @@ export const useCommentStore = defineStore('comment', () => {
    */
   function updatePublicOpinion() {
     if (comments.value.length === 0) {
-      publicOpinion.value = createPublicOpinionFromSimulation();
+      publicOpinion.value = { heat: 0, sentiment: 0, trend: 'stable', triggers: [] };
       return;
     }
     
@@ -1045,7 +833,7 @@ export const useCommentStore = defineStore('comment', () => {
       
       // 评论获赞 10+ 奖励积分
       if (comment.likes === 10) {
-        void pointsStore.unlockAchievement('hot_comment');
+        pointsStore.unlockAchievement('hot_comment');
       }
     }
     
@@ -1062,14 +850,13 @@ export const useCommentStore = defineStore('comment', () => {
   function replyToComment(id: string, content: string): boolean {
     const comment = comments.value.find(c => c.id === id);
     if (!comment) return false;
-    if (!content.trim()) return false;
     
-    comment.comments++;
+    comment.replies++;
     saveToLocal();
     
     // 处理负面评论奖励
     if (comment.sentiment === 'negative') {
-      void pointsStore.spendPoints(-5, '处理负面评论奖励');
+      pointsStore.spendPoints(-5, '处理负面评论奖励');
     }
     
     return true;
@@ -1105,7 +892,7 @@ export const useCommentStore = defineStore('comment', () => {
     // 统计热门标签
     const tagCount: Record<string, number> = {};
     comments.value.forEach(comment => {
-      (comment.tags || []).forEach(tag => {
+      comment.tags.forEach(tag => {
         tagCount[tag] = (tagCount[tag] || 0) + 1;
       });
     });
@@ -1155,9 +942,10 @@ export const useCommentStore = defineStore('comment', () => {
       try {
         const data = JSON.parse(saved);
         comments.value = data.comments || [];
-        sentimentStats.value = data.sentimentStats || createSentimentStatsFromSimulation();
+        sentimentStats.value = data.sentimentStats || {
+          total: 0, positive: 0, negative: 0, neutral: 0, satisfaction: 85, hotTags: []
+        };
         lastGeneratedAt.value = data.lastGeneratedAt || null;
-        updatePublicOpinion();
       } catch (e) {
         console.error('加载评论数据失败:', e);
       }
@@ -1165,12 +953,12 @@ export const useCommentStore = defineStore('comment', () => {
   }
   
   /**
-   * 初始化评论系统
-   * 不再生成默认评论，等待真实评论生成
+   * 初始化一些默认评论
    */
   function initDefaultComments() {
-    // 不再生成默认评论，保持空状态
-    // 评论将在项目上线后根据玩家反馈自动生成
+    if (comments.value.length === 0) {
+      generateDailyComments(10);
+    }
   }
   
   /**
@@ -1398,12 +1186,12 @@ export const useCommentStore = defineStore('comment', () => {
     sentimentStats,
     isGenerating,
     lastGeneratedAt,
-
+    
     // Getters
     filteredComments,
     commentsByType,
     commentsBySentiment,
-
+    
     // Actions
     generateNewComments,
     generateDailyComments,
@@ -1425,20 +1213,11 @@ export const useCommentStore = defineStore('comment', () => {
     generateQuitComments,
     generateReturnComments,
     generateRecommendationComments,
-
+    
     // 角色数据分析
     analyzeCharacterMentions,
     calculateCPHeat,
     calculateCharacterReputation,
-    getCharacterCPRanking,
-
-    // 新增：情感分布统计
-    getSentimentDistributionStats,
-    calculateSentimentDistributionFromSimulation,
-    
-    // Phase 4: 协调者模式 - onDailyTick
-    onDailyTick(ctx: any) {
-      generateDailyComments();
-    },
+    getCharacterCPRanking
   };
 });

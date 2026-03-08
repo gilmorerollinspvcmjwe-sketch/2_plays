@@ -1,0 +1,54 @@
+{
+  "activities": [
+    {
+      "id": "valentine",
+      "name": "情人节限定活动",
+      "type": "限时",
+      "tags": ["情人节", "高福利"],
+      "rewardValue": 100,
+      "difficulty": 3,
+      "duration": 7,
+      "requiredLevel": 5
+    },
+    {
+      "id": "daily_signin",
+      "name": "每日签到",
+      "type": "日常",
+      "tags": ["签到"],
+      "rewardValue": 10,
+      "difficulty": 1,
+      "duration": 1,
+      "requiredLevel": 1
+    },
+    {
+      "id": "anniversary",
+      "name": "周年庆典",
+      "type": "大型",
+      "tags": ["周年庆", "高福利"],
+      "rewardValue": 200,
+      "difficulty": 5,
+      "duration": 14,
+      "requiredLevel": 10
+    },
+    {
+      "id": "weekend_bonus",
+      "name": "周末双倍",
+      "type": "限时",
+      "tags": ["周末", "双倍"],
+      "rewardValue": 50,
+      "difficulty": 2,
+      "duration": 2,
+      "requiredLevel": 1
+    },
+    {
+      "id": "new_character",
+      "name": "新角色上线",
+      "type": "限时",
+      "tags": ["新角色", "限定"],
+      "rewardValue": 150,
+      "difficulty": 4,
+      "duration": 7,
+      "requiredLevel": 5
+    }
+  ]
+}

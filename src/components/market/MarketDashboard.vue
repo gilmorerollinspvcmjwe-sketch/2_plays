@@ -1,6 +1,6 @@
 <template>
   <div class="market-dashboard">
-    <van-nav-bar title="市场情报中心" left-arrow @click-left="$router.back()">
+    <van-nav-bar title="市场情报中心" left-arrow @click-left="handleBack">
       <template #right>
         <van-icon name="refresh" size="20" @click="refreshData" />
       </template>
@@ -174,7 +174,6 @@
             <div class="forecast-confidence">
               <span class="label">置信度</span>
               <van-circle
-                v-model:current-rate="forecast.confidence"
                 :rate="forecast.confidence"
                 :speed="100"
                 :text="forecast.confidence + '%'"
@@ -374,15 +373,15 @@
               <span class="factor-desc">{{ factor.description }}</span>
             </div>
           </div>
-          <van-divider>应对策略</van-divider>
-          <van-cell-group inset>
+          <van-divider content-position="center">应对策略</van-divider>
+          <div class="mitigation-strategies">
             <van-cell
               v-for="(strategy, index) in marketRisk.mitigationStrategies"
               :key="index"
               :title="strategy"
               icon="shield-o"
             />
-          </van-cell-group>
+          </div>
         </div>
       </van-cell-group>
 
@@ -598,13 +597,18 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import type { MarketTrend, Competitor, Festival, RevenueForecast, MarketEvent, MarketEnvironment } from '@/types/market';
 import { generateRandomEvent, getActiveEvents, calculateCombinedImpact, eventHistory } from '@/utils/marketEvents';
 import { useSimulationStore } from '@/stores/simulationStore';
+import { useTaskStore } from '@/stores/taskStore';
 import { storeToRefs } from 'pinia';
 
+const router = useRouter();
+
 const simulationStore = useSimulationStore();
-const { isInitialized, worldImpact, currentRetention, sentimentDistribution, gachaDistribution, characterPopularity, competitorNews, competitors, worldSimulator, globalMetrics } = storeToRefs(simulationStore);
+const taskStore = useTaskStore();
+const { isInitialized, worldImpact, currentRetention, sentimentDistribution, gachaDistribution, characterPopularity, competitors, worldSimulator, globalMetrics } = storeToRefs(simulationStore);
 
 // 竞品数据 - 从 simulationStore 获取
 const competitorList = computed(() => {
@@ -711,73 +715,42 @@ const allMarketEvents = computed(() => {
   return events.slice(0, 20);
 });
 
+// 节日配置数据
+const festivalConfig = ref<any[]>([]);
+
+const loadFestivalConfig = async () => {
+  try {
+    const config = await import('@/config/festivals.json');
+    festivalConfig.value = config.festivals || [];
+  } catch (error) {
+    console.error('加载节日配置失败:', error);
+  }
+};
+
 // 收入预测数据
 const festivals = computed<Festival[]>(() => {
   const now = new Date();
   const year = now.getFullYear();
   const result: Festival[] = [];
-  
-  // 情人节（2月14日）
-  const valentine = new Date(year, 1, 14);
-  if (valentine > now) {
-    result.push({
-      id: 'valentine',
-      name: '情人节活动',
-      startDate: valentine,
-      endDate: new Date(valentine.getTime() + 7 * 24 * 60 * 60 * 1000),
-      description: '浪漫情人节，限定剧情与服装上线',
-      bonusMultiplier: 2.5,
-      specialEvents: ['情人节限定卡池', '约会剧情', '情侣服装'],
-      impact: 'high'
-    });
-  }
-  
-  // 白色情人节（3月14日）
-  const whiteDay = new Date(year, 2, 14);
-  if (whiteDay > now) {
-    result.push({
-      id: 'white_day',
-      name: '白色情人节',
-      startDate: whiteDay,
-      endDate: new Date(whiteDay.getTime() + 7 * 24 * 60 * 60 * 1000),
-      description: '回礼之日，特别剧情与道具',
-      bonusMultiplier: 2.0,
-      specialEvents: ['回礼剧情', '限定道具', '双倍掉落'],
-      impact: 'medium'
-    });
-  }
-  
-  // 五一劳动节
-  const laborDay = new Date(year, 4, 1);
-  if (laborDay > now) {
-    result.push({
-      id: 'labor_day',
-      name: '五一活动',
-      startDate: laborDay,
-      endDate: new Date(laborDay.getTime() + 7 * 24 * 60 * 60 * 1000),
-      description: '劳动节假期活动',
-      bonusMultiplier: 2.0,
-      specialEvents: ['登录奖励', '限时副本', '限定道具'],
-      impact: 'medium'
-    });
-  }
-  
-  // 周年庆（假设为1月1日）
-  const anniversary = new Date(year, 0, 1);
-  if (anniversary > now) {
-    result.push({
-      id: 'anniversary',
-      name: '周年庆典',
-      startDate: anniversary,
-      endDate: new Date(anniversary.getTime() + 10 * 24 * 60 * 60 * 1000),
-      description: '游戏周年庆，海量福利与活动',
-      bonusMultiplier: 3.0,
-      specialEvents: ['周年限定角色', '登录奖励', '特别剧情'],
-      impact: 'high'
-    });
-  }
-  
-  return result;
+
+  festivalConfig.value.forEach((festival: any) => {
+    const festivalDate = new Date(year, festival.month - 1, festival.day);
+
+    if (festivalDate > now) {
+      result.push({
+        id: festival.id,
+        name: festival.name,
+        startDate: festivalDate,
+        endDate: new Date(festivalDate.getTime() + festival.durationDays * 24 * 60 * 60 * 1000),
+        description: festival.description,
+        bonusMultiplier: festival.bonusMultiplier,
+        specialEvents: festival.specialEvents,
+        impact: festival.impact
+      });
+    }
+  });
+
+  return result.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
 });
 
 // 收入预测数据
@@ -955,7 +928,9 @@ const marketEnvironment = computed<MarketEnvironment>(() => ({
 
 // 计算属性
 const marketHealth = computed(() => {
-  const avgGrowth = marketTrends.value.reduce((sum, t) => sum + t.growthRate, 0) / marketTrends.value.length;
+  const trends = marketTrends.value;
+  if (trends.length === 0) return { type: 'primary' as const, text: '加载中' };
+  const avgGrowth = trends.reduce((sum, t) => sum + t.growthRate, 0) / trends.length;
   if (avgGrowth > 30) return { type: 'success' as const, text: '繁荣' };
   if (avgGrowth > 15) return { type: 'primary' as const, text: '良好' };
   if (avgGrowth > 0) return { type: 'warning' as const, text: '平稳' };
@@ -975,6 +950,15 @@ const showTrendPopup = ref(false);
 const showCompetitorPopup = ref(false);
 const selectedTrend = ref<MarketTrend | null>(null);
 const selectedCompetitor = ref<Competitor | null>(null);
+
+// 返回处理
+const handleBack = () => {
+  if (window.history.length > 1) {
+    router.back();
+  } else {
+    router.push('/');
+  }
+};
 
 // 方法
 const refreshData = () => {
@@ -1164,9 +1148,12 @@ const getCountdown = (date: Date) => {
 };
 
 onMounted(() => {
+  loadFestivalConfig();
   refreshData();
   // 初始化市场预测
   updateMarketPredictions();
+  // 触发每日任务进度 - 查看市场情报
+  taskStore.updateTaskProgress('daily_view_market');
 });
 </script>
 

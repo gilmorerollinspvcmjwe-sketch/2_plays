@@ -153,10 +153,8 @@ const simulationStatus = computed(() => {
   return { type: 'danger' as const, text: '需改进' };
 });
 
-// 情感分布统计
-const sentimentStats = computed(() => {
-  return commentStore.getSentimentDistributionStats();
-});
+// 情感分布统计 - 直接使用 store 中的 sentimentStats
+const sentimentStats = computed(() => commentStore.sentimentStats);
 
 // 格式化上次生成时间
 function formatLastGenerated(timestamp: string): string {

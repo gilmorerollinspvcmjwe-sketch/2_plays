@@ -1,214 +1,130 @@
-/**
- * 新手引导状态管理 Store
- */
-
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { OnboardingState } from '@/types/onboarding';
-import { ONBOARDING_STEPS, ONBOARDING_STORAGE_KEY } from '@/types/onboarding';
-
-const TOTAL_STEPS = ONBOARDING_STEPS.length;
+import { ONBOARDING_STEPS, type OnboardingStep, type OnboardingState, ONBOARDING_STORAGE_KEY } from '@/types/onboarding';
 
 export const useOnboardingStore = defineStore('onboarding', () => {
-  // State
   const state = ref<OnboardingState>({
     isFirstVisit: true,
     isCompleted: false,
-    currentStep: 1,
+    currentStep: 0,
     completedSteps: [],
-    skipped: false
+    skipped: false,
+    lastVisitAt: undefined
   });
 
   const isActive = ref(false);
 
-  // Getters
-  const currentStepData = computed(() => {
-    return ONBOARDING_STEPS.find(s => s.id === state.value.currentStep) || null;
-  });
+  const totalSteps = ONBOARDING_STEPS.length;
 
   const progress = computed(() => {
-    return (state.value.completedSteps.length / TOTAL_STEPS) * 100;
+    return Math.round((state.value.currentStep / totalSteps) * 100);
   });
 
-  const isLastStep = computed(() => {
-    return state.value.currentStep >= TOTAL_STEPS;
+  const currentStepData = computed(() => {
+    if (state.value.currentStep >= totalSteps) return null;
+    return ONBOARDING_STEPS[state.value.currentStep];
   });
 
-  const isFirstStep = computed(() => {
-    return state.value.currentStep === 1;
-  });
+  const isFirstStep = computed(() => state.value.currentStep === 0);
+  
+  const isLastStep = computed(() => state.value.currentStep >= totalSteps - 1);
+  
+  const canSkip = computed(() => true);
 
-  const canSkip = computed(() => {
-    return !state.value.isCompleted && !state.value.skipped;
-  });
-
-  // Actions
-
-  /**
-   * 初始化引导状态
-   */
-  function init(): void {
+  function loadFromLocal() {
     const saved = localStorage.getItem(ONBOARDING_STORAGE_KEY);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        state.value = { ...state.value, ...parsed };
+        const data = JSON.parse(saved);
+        state.value = { ...state.value, ...data };
       } catch (e) {
-        console.error('加载引导状态失败:', e);
+        console.error('加载引导数据失败:', e);
       }
     }
+  }
 
-    // 如果是首次访问且未完成，自动开始引导
+  function saveToLocal() {
+    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state.value));
+  }
+
+  function init() {
+    loadFromLocal();
+    
     if (state.value.isFirstVisit && !state.value.isCompleted && !state.value.skipped) {
       start();
     }
   }
 
-  /**
-   * 开始引导
-   */
-  function start(): void {
+  function start() {
     isActive.value = true;
     state.value.isFirstVisit = false;
+    state.value.lastVisitAt = new Date().toISOString();
     saveToLocal();
   }
 
-  /**
-   * 下一步
-   */
-  function nextStep(): void {
-    if (!state.value.completedSteps.includes(state.value.currentStep)) {
+  function nextStep() {
+    if (state.value.currentStep < totalSteps - 1) {
       state.value.completedSteps.push(state.value.currentStep);
-    }
-
-    if (isLastStep.value) {
-      complete();
-    } else {
       state.value.currentStep++;
       saveToLocal();
     }
   }
 
-  /**
-   * 上一步
-   */
-  function prevStep(): void {
-    if (!isFirstStep.value) {
+  function prevStep() {
+    if (state.value.currentStep > 0) {
       state.value.currentStep--;
       saveToLocal();
     }
   }
 
-  /**
-   * 跳转到指定步骤
-   */
-  function goToStep(stepId: number): void {
-    if (stepId >= 1 && stepId <= TOTAL_STEPS) {
-      state.value.currentStep = stepId;
+  function goToStep(step: number) {
+    if (step >= 0 && step < totalSteps) {
+      state.value.currentStep = step;
       saveToLocal();
     }
   }
 
-  /**
-   * 跳过引导
-   */
-  function skip(): void {
-    state.value.skipped = true;
-    isActive.value = false;
-    saveToLocal();
-  }
-
-  /**
-   * 完成引导
-   */
-  function complete(): void {
-    if (!state.value.completedSteps.includes(state.value.currentStep)) {
-      state.value.completedSteps.push(state.value.currentStep);
-    }
+  function complete() {
+    state.value.completedSteps.push(state.value.currentStep);
     state.value.isCompleted = true;
     isActive.value = false;
     saveToLocal();
   }
 
-  /**
-   * 重置引导
-   */
-  function reset(): void {
-    state.value = {
-      isFirstVisit: true,
-      isCompleted: false,
-      currentStep: 1,
-      completedSteps: [],
-      skipped: false
-    };
+  function skip() {
+    state.value.skipped = true;
     isActive.value = false;
     saveToLocal();
   }
 
-  /**
-   * 标记当前步骤完成
-   */
-  function markCurrentStepComplete(): void {
-    if (!state.value.completedSteps.includes(state.value.currentStep)) {
-      state.value.completedSteps.push(state.value.currentStep);
-      saveToLocal();
-    }
-  }
-
-  /**
-   * 检查步骤是否已完成
-   */
-  function isStepCompleted(stepId: number): boolean {
-    return state.value.completedSteps.includes(stepId);
-  }
-
-  /**
-   * 保存到本地存储
-   */
-  function saveToLocal(): void {
-    localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state.value));
-  }
-
-  /**
-   * 关闭引导（临时）
-   */
-  function close(): void {
+  function reset() {
+    state.value = {
+      isFirstVisit: true,
+      isCompleted: false,
+      currentStep: 0,
+      completedSteps: [],
+      skipped: false,
+      lastVisitAt: undefined
+    };
     isActive.value = false;
-  }
-
-  /**
-   * 重新打开引导
-   */
-  function reopen(): void {
-    if (!state.value.isCompleted && !state.value.skipped) {
-      isActive.value = true;
-    }
+    localStorage.removeItem(ONBOARDING_STORAGE_KEY);
   }
 
   return {
-    // State
     state,
     isActive,
-    
-    // Getters
-    currentStepData,
     progress,
-    isLastStep,
+    currentStepData,
     isFirstStep,
+    isLastStep,
     canSkip,
-    
-    // Actions
     init,
     start,
     nextStep,
     prevStep,
     goToStep,
-    skip,
     complete,
-    reset,
-    markCurrentStepComplete,
-    isStepCompleted,
-    close,
-    reopen
+    skip,
+    reset
   };
 });

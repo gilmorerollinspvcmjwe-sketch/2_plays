@@ -26,6 +26,7 @@ import { useEmployeeStore } from './employeeStore';
 import { useProjectStore } from './projectStore';
 import { useGameStore } from './gameStore';
 import { useOperationStore } from './operationStore';
+import { useTaskStore } from './taskStore';
 import type {
   ProjectOperationData,
   SimulationConfig,
@@ -43,20 +44,6 @@ import type {
 import { DailyEventEngine } from '@/engine/dailyEventEngine';
 import type { DailyEvent, DailyEventType } from '@/engine/dailyEventEngine';
 import { seasonEventEngine } from '@/engine/seasonEventEngine';
-import { CompetitorAIEngine, type MarketState, type PlayerCompanyState } from '@/engine/competitorAIEngine';
-import { CompetitorEventEngine } from '@/engine/competitorEventEngine';
-import { COMPETITOR_CONFIGS, getInitialGames } from '@/data/competitorConfig';
-import type { CompetitorAI, CompetitorNews } from '@/types/competitor';
-import {
-  checkIncidentTrigger,
-  type IncidentTriggerResult
-} from '@/engine/eventTriggerEngine';
-import {
-  checkCrisisTrigger,
-  createCrisisInstance,
-  type CrisisTriggerResult
-} from '@/engine/crisisTriggerEngine';
-import type { Crisis } from '@/types/crisis';
 import {
   calculateProjectQuality,
   calculateCharacterQuality,
@@ -64,23 +51,6 @@ import {
   type ProjectQualityScore
 } from '@/engine/qualityScoring';
 import type { Character, Plot } from '@/types';
-import {
-  contentGenerationEngine,
-  type GenerationContext,
-  type CharacterHeat,
-  type PlotHeat,
-  type ActivityHeat,
-  type GameEvent,
-  type GeneratedComment,
-  type GeneratedConfession,
-  type GeneratedFanwork
-} from '@/engine/contentGenerationEngine';
-import { HEAT_THRESHOLD as FANWORK_HEAT_THRESHOLD } from './fanworkStore';
-import { useCommentStore } from './commentStore';
-import { useConfessionStore } from './confessionStore';
-import { useFanworkStore } from './fanworkStore';
-import { useProjectOperationStore, type TickContext } from './projectOperationStore';
-import { useAnalyticsStore } from './analyticsStore';
 
 export interface RetentionData {
   d1: number;
@@ -154,6 +124,13 @@ export const useSimulationStore = defineStore('simulation', () => {
   const engine = ref<SimulationEngine | null>(null);
   const error = ref<string | null>(null);
 
+  // 每日结算回调
+  const dailyReportCallback = ref<((report: any) => void) | null>(null);
+
+  function setDailyReportCallback(callback: (report: any) => void) {
+    dailyReportCallback.value = callback;
+  }
+
   const recentConfessions = ref<Confession[]>([]);
   const recentFanworks = ref<Fanwork[]>([]);
   const recentEvents = ref<OperationEvent[]>([]);
@@ -188,39 +165,8 @@ export const useSimulationStore = defineStore('simulation', () => {
   const platformStatistics = ref<PlatformStatistics | null>(null);
 
   // ==================== Phase 2: 新增状态 ====================
-// 项目运营数据映射（projectId -> data）
-const projectOperationData = ref<Map<string, ProjectOperationData>>(new Map());
-
-// ==================== 内容生成相关状态 ====================
-// 每日内容生成统计
-const dailyContentStats = ref<{
-  comments: number;
-  confessions: number;
-  fanworks: number;
-  hotComments: GeneratedComment[];
-  hotConfessions: GeneratedConfession[];
-  hotFanworks: GeneratedFanwork[];
-}>({
-  comments: 0,
-  confessions: 0,
-  fanworks: 0,
-  hotComments: [],
-  hotConfessions: [],
-  hotFanworks: []
-});
-
-// 内容生成历史
-const contentGenerationHistory = ref<Array<{
-  day: number;
-  comments: number;
-  confessions: number;
-  fanworks: number;
-}>>([]);
-
-// 告白生成阈值
-const CONFESSION_POPULARITY_THRESHOLD = 20;
-// 同人热度阈值
-const FANWORK_HEAT_THRESHOLD = 30;
+  // 项目运营数据映射（projectId -> data）
+  const projectOperationData = ref<Map<string, ProjectOperationData>>(new Map());
 
   // 全局运营指标（汇总所有项目）
   const globalMetrics = ref<GlobalMetrics>({
@@ -253,418 +199,7 @@ const FANWORK_HEAT_THRESHOLD = 30;
   const triggeredEvents = ref<DailyEvent[]>([]);
   const pendingNeutralEvents = ref<DailyEvent[]>([]);
 
-  // ==================== 运营事件和危机状态 ====================
-  const dailyIncidents = ref<IncidentTriggerResult[]>([]);
-  const dailyCrises = ref<CrisisTriggerResult[]>([]);
-  const activeCrises = ref<Crisis[]>([]);
-
-  // ==================== 竞品AI系统状态 ====================
-  const competitorAIEngine = ref<CompetitorAIEngine | null>(null);
-  const competitorEventEngine = ref<CompetitorEventEngine | null>(null);
-  const competitors = ref<CompetitorAI[]>([]);
-  const competitorNews = ref<CompetitorNews[]>([]);
-  
-  // 初始化竞品AI系统
-  function initCompetitorAI() {
-    competitorAIEngine.value = new CompetitorAIEngine();
-    competitorEventEngine.value = new CompetitorEventEngine();
-    
-    // 初始化6个竞品公司
-    competitors.value = COMPETITOR_CONFIGS.map(config => {
-      const games = getInitialGames(config.id);
-      return {
-        ...config,
-        games,
-      } as CompetitorAI;
-    });
-    
-    console.log(`[CompetitorAI] 已初始化 ${competitors.value.length} 个竞品公司`);
-  }
-
   const isInitialized = computed(() => playerPool.value !== null && engine.value !== null);
-
-  // ==================== 内容生成相关函数 ====================
-
-  /**
-   * 构建内容生成上下文
-   * 基于当前项目状态构建 GenerationContext
-   */
-  function buildGenerationContext(project: any): GenerationContext | null {
-    const gameStore = useGameStore();
-    const operationStore = useOperationStore();
-
-    // 获取项目关联的角色
-    const projectChars: Character[] = project.characters
-      .map((id: string) => gameStore.characters.find(c => c.id === id))
-      .filter((c: Character | undefined): c is Character => c !== undefined);
-
-    // 获取项目关联的剧情
-    const projectPlots: Plot[] = project.plots
-      .map((id: string) => gameStore.plots.find(p => p.id === id))
-      .filter((p: Plot | undefined): p is Plot => p !== undefined);
-
-    // 构建角色热度信息
-    const characters: CharacterHeat[] = projectChars.map(char => ({
-      characterId: char.id,
-      characterName: char.name,
-      popularity: char.popularity?.current || char.popularity?.base || 50,
-      intimacy: char.intimacy?.current || 50,
-      plotPerformance: char.plotPerformance || 50,
-      cpHeat: new Map(Object.entries(char.popularity?.cpHeat || {}))
-    }));
-
-    // 构建剧情热度信息
-    const plots: PlotHeat[] = projectPlots.map(plot => ({
-      plotId: plot.id,
-      plotTitle: plot.title,
-      heat: plot.heat || 50,
-      sentiment: 'neutral',
-      discussionCount: plot.discussionCount || 0
-    }));
-
-    // 构建活动热度信息
-    const activities: ActivityHeat[] = operationStore.events
-      .filter((e: any) => e.projectId === project.id && e.status === 'ongoing')
-      .map((e: any) => ({
-        activityId: e.id,
-        activityName: e.name,
-        heat: e.heat || 50,
-        type: e.type || 'event'
-      }));
-
-    // 获取项目运营数据
-    const projectData = projectOperationData.value.get(project.id);
-
-    // 构建游戏事件
-    const recentEvents: GameEvent[] = triggeredEvents.value.map(e => ({
-      id: e.id,
-      type: e.category === 'positive' ? 'positive' : e.category === 'negative' ? 'negative' : 'neutral',
-      title: e.title,
-      description: e.description,
-      timestamp: Date.now(),
-      impact: e.impact ? {
-        target: 'reputation',
-        value: e.impact.reputationChange || 0
-      } : undefined
-    }));
-
-    return {
-      project: project as any,
-      metrics: {
-        rating: (projectData?.satisfaction || 0.7) * 10,
-        downloads: projectData?.activePlayers || 1000,
-        revenue: projectData?.totalRevenue || 0,
-        dau: projectData?.activePlayers || 1000,
-        mau: projectData?.activePlayers ? projectData.activePlayers * 3 : 3000,
-        retention: {
-          d1: projectData?.retentionRate || 0.5,
-          d7: (projectData?.retentionRate || 0.5) * 0.6,
-          d30: (projectData?.retentionRate || 0.5) * 0.3
-        }
-      },
-      characters,
-      plots,
-      activities,
-      recentEvents,
-      daySinceLaunch: currentDay.value,
-      playerSatisfaction: projectData?.satisfaction || 0.7
-    };
-  }
-
-  /**
-   * 生成虚拟玩家列表
-   */
-  function createVirtualPlayers(count: number): import('@/engine/simulation/types').VirtualPlayer[] {
-    const playStyles = ['剧情党', '强度党', 'XP党', '社交党', '咸鱼党'];
-    const players: import('@/engine/simulation/types').VirtualPlayer[] = [];
-
-    for (let i = 0; i < count; i++) {
-      players.push({
-        id: `virtual_${Date.now()}_${i}`,
-        playStyle: playStyles[Math.floor(Math.random() * playStyles.length)],
-        satisfaction: 0.3 + Math.random() * 0.7,
-        loyalty: 0.2 + Math.random() * 0.8,
-        activityLevel: 0.1 + Math.random() * 0.9,
-        state: 'ACTIVE',
-        lastActiveTime: Date.now()
-      });
-    }
-
-    return players;
-  }
-
-  /**
-   * 计算角色平均人气
-   */
-  function calculateAverageCharacterPopularity(characters: CharacterHeat[]): number {
-    if (characters.length === 0) return 0;
-    return characters.reduce((sum, c) => sum + c.popularity, 0) / characters.length;
-  }
-
-  /**
-   * 计算剧情平均热度
-   */
-  function calculateAveragePlotHeat(plots: PlotHeat[]): number {
-    if (plots.length === 0) return 0;
-    return plots.reduce((sum, p) => sum + p.heat, 0) / plots.length;
-  }
-
-  /**
-   * 执行内容生成
-   * 项目上线后每日触发
-   */
-  function generateContentForProject(project: any): {
-    comments: GeneratedComment[];
-    confessions: GeneratedConfession[];
-    fanworks: GeneratedFanwork[];
-  } {
-    const context = buildGenerationContext(project);
-    if (!context) {
-      return { comments: [], confessions: [], fanworks: [] };
-    }
-
-    // 计算平均人气和热度
-    const avgCharacterPopularity = calculateAverageCharacterPopularity(context.characters);
-    const avgPlotHeat = calculateAveragePlotHeat(context.plots);
-
-    // 根据项目运营数据确定生成数量
-    const projectData = projectOperationData.value.get(project.id);
-    const activePlayers = projectData?.activePlayers || 1000;
-
-    // 评论生成：项目上线后每日触发
-    const commentCount = Math.max(5, Math.floor(activePlayers / 100));
-    const players = createVirtualPlayers(commentCount);
-
-    // 告白生成：角色人气达到阈值后触发
-    const canGenerateConfessions = avgCharacterPopularity >= CONFESSION_POPULARITY_THRESHOLD;
-
-    // 同人生成：热度达到阈值后触发
-    const canGenerateFanworks = avgCharacterPopularity >= FANWORK_HEAT_THRESHOLD ||
-                                 avgPlotHeat >= FANWORK_HEAT_THRESHOLD;
-
-    // 使用内容生成引擎生成内容
-    const result = contentGenerationEngine.generate(context, players);
-
-    // 过滤告白（检查人气阈值）
-    const filteredConfessions = canGenerateConfessions ? result.confessions : [];
-
-    // 过滤同人（检查热度阈值）
-    const filteredFanworks = canGenerateFanworks ? result.fanworks : [];
-
-    return {
-      comments: result.comments,
-      confessions: filteredConfessions,
-      fanworks: filteredFanworks
-    };
-  }
-
-  /**
-   * 应用内容生成对游戏状态的影响
-   */
-  function applyContentImpact(
-    comments: GeneratedComment[],
-    confessions: GeneratedConfession[],
-    fanworks: GeneratedFanwork[]
-  ): {
-    reputationChange: number;
-    popularityChanges: Map<string, number>;
-  } {
-    const gameStore = useGameStore();
-    let reputationChange = 0;
-    const popularityChanges = new Map<string, number>();
-
-    // 1. 评论对声誉的影响
-    comments.forEach(comment => {
-      if (comment.sentiment === 'negative') {
-        // 负面评论降低声誉
-        reputationChange -= 0.1;
-      } else if (comment.sentiment === 'positive') {
-        // 正面评论提升声誉
-        reputationChange += 0.05;
-      }
-    });
-
-    // 2. 告白对角色人气的影响
-    confessions.forEach(confession => {
-      if (confession.association.characterId) {
-        const currentChange = popularityChanges.get(confession.association.characterId) || 0;
-        popularityChanges.set(confession.association.characterId, currentChange + 0.5);
-      }
-    });
-
-    // 3. 同人对角色人气的影响
-    fanworks.forEach(fanwork => {
-      // 同人作品提升关联角色人气
-      if (fanwork.association.characterId) {
-        const currentChange = popularityChanges.get(fanwork.association.characterId) || 0;
-        const qualityBonus = fanwork.quality === '优质' ? 1.0 :
-                            fanwork.quality === '普通' ? 0.5 : 0.2;
-        popularityChanges.set(fanwork.association.characterId, currentChange + qualityBonus);
-      }
-
-      // CP同人提升两个角色的人气
-      if (fanwork.association.cpCharacters) {
-        fanwork.association.cpCharacters.forEach(charId => {
-          const currentChange = popularityChanges.get(charId) || 0;
-          popularityChanges.set(charId, currentChange + 0.3);
-        });
-      }
-    });
-
-    // 应用角色人气变化
-    popularityChanges.forEach((change, characterId) => {
-      gameStore.updateCharacterPopularity(characterId, {
-        popularity: change,
-        discussionHeat: change * 2
-      });
-    });
-
-    return { reputationChange, popularityChanges };
-  }
-
-  /**
-   * 应用危机影响
-   * @param crisis 危机实例
-   * @returns 影响数值
-   */
-  function applyCrisisImpact(crisis: Crisis): {
-    reputationChange: number;
-    playerChange: number;
-    satisfactionChange: number;
-  } {
-    const levelMultipliers: Record<string, number> = {
-      minor: 0.5,
-      moderate: 1.0,
-      severe: 1.5,
-      critical: 2.0
-    };
-
-    const multiplier = levelMultipliers[crisis.level] || 1.0;
-
-    const reputationChange = -5 * multiplier;
-    const playerChange = -50 * multiplier;
-    const satisfactionChange = -3 * multiplier;
-
-    // 应用影响
-    operationMetrics.value.reputation = Math.max(0, operationMetrics.value.reputation + reputationChange);
-
-    return { reputationChange, playerChange, satisfactionChange };
-  }
-
-  /**
-   * 更新每日内容生成统计
-   */
-  function updateDailyContentStats(
-    comments: GeneratedComment[],
-    confessions: GeneratedConfession[],
-    fanworks: GeneratedFanwork[]
-  ): void {
-    // 获取热门内容（点赞数前3）
-    const hotComments = [...comments]
-      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-      .slice(0, 3);
-
-    const hotConfessions = [...confessions]
-      .sort((a, b) => b.likes - a.likes)
-      .slice(0, 3);
-
-    const hotFanworks = [...fanworks]
-      .sort((a, b) => b.likes - a.likes)
-      .slice(0, 3);
-
-    dailyContentStats.value = {
-      comments: comments.length,
-      confessions: confessions.length,
-      fanworks: fanworks.length,
-      hotComments,
-      hotConfessions,
-      hotFanworks
-    };
-
-    // 添加到历史
-    contentGenerationHistory.value.push({
-      day: currentDay.value,
-      comments: comments.length,
-      confessions: confessions.length,
-      fanworks: fanworks.length
-    });
-
-    // 限制历史记录长度
-    if (contentGenerationHistory.value.length > 30) {
-      contentGenerationHistory.value.shift();
-    }
-  }
-
-  /**
-   * 同步生成的内容到各个 Store
-   */
-  function syncContentToStores(
-    projectId: string,
-    comments: GeneratedComment[],
-    confessions: GeneratedConfession[],
-    fanworks: GeneratedFanwork[]
-  ): void {
-    const commentStore = useCommentStore();
-    const confessionStore = useConfessionStore();
-    const fanworkStore = useFanworkStore();
-
-    // 同步评论
-    if (comments.length > 0) {
-      const gameComments = comments.map(c => ({
-        id: c.id,
-        content: c.content,
-        type: 'game' as const,
-        sentiment: c.sentiment as 'positive' | 'neutral' | 'negative',
-        playerType: 'casual' as const,
-        platform: mapEnginePlatformToUI(c.platform),
-        tags: c.relatedTags,
-        likes: c.rating || Math.floor(Math.random() * 50) + 10,
-        shares: Math.floor(Math.random() * 20),
-        comments: Math.floor(Math.random() * 10),
-        heat: 0,
-        createdAt: new Date(c.timestamp).toISOString(),
-        isLiked: false,
-        projectId: c.association.projectId,
-        projectName: c.association.projectName,
-        characterId: c.association.characterId,
-        characterName: c.association.characterName,
-        plotId: c.association.plotId,
-        plotTitle: c.association.plotTitle
-      }));
-
-      // 添加到 commentStore
-      gameComments.forEach(comment => {
-        commentStore.comments.unshift(comment);
-      });
-    }
-
-    // 同步告白
-    if (confessions.length > 0) {
-      confessionStore.generateConfessions(confessions);
-    }
-
-    // 同步同人
-    if (fanworks.length > 0) {
-      const context = buildGenerationContext({ id: projectId });
-      if (context) {
-        fanworkStore.generateFanworks(context);
-      }
-    }
-  }
-
-  /**
-   * 将引擎平台类型映射到 UI 平台类型
-   */
-  function mapEnginePlatformToUI(platform: string): import('./commentStore').PlatformType {
-    const mapping: Record<string, import('./commentStore').PlatformType> = {
-      'taptap': 'tieba',
-      'appstore': 'weibo',
-      'weibo': 'weibo',
-      'bilibili': 'bilibili',
-      'xiaohongshu': 'xiaohongshu'
-    };
-    return mapping[platform] || 'weibo';
-  }
 
   // ==================== Phase 2: 核心算法函数 ====================
 
@@ -1152,7 +687,8 @@ const FANWORK_HEAT_THRESHOLD = 30;
     const result = dailyEventEngine.value.triggerEvents({
       employees,
       projectIds,
-      characterNames
+      characterNames,
+      projectData: projectOperationData.value, // 传递项目运营数据
     });
 
     // 保存触发的事件
@@ -1370,6 +906,27 @@ const FANWORK_HEAT_THRESHOLD = 30;
     pendingNeutralEvents.value = pendingNeutralEvents.value.filter(e => e.id !== eventId);
   }
 
+  /**
+   * 移除待处理事件（用于扩展事件）
+   */
+  function removePendingEvent(eventId: string) {
+    pendingNeutralEvents.value = pendingNeutralEvents.value.filter(e => e.id !== eventId);
+  }
+
+  /**
+   * 应用事件影响（支持自定义影响对象）
+   */
+  function applyCustomEventImpact(impact: {
+    revenueChange?: number;
+    satisfactionChange?: number;
+    reputationChange?: number;
+    playerChange?: number;
+    fatigueChange?: number;
+    experienceBonus?: number;
+  }) {
+    applyEventImpact(impact as any);
+  }
+
   // ==================== 原有函数 ====================
 
   async function initialize() {
@@ -1388,9 +945,6 @@ const FANWORK_HEAT_THRESHOLD = 30;
 
       worldSimulator.value = new WorldSimulator();
       worldSimulator.value.initialize(1);
-
-      // 初始化竞品AI系统
-      initCompetitorAI();
 
       // Phase 5: 初始化每日事件引擎
       dailyEventEngine.value = new DailyEventEngine();
@@ -1549,7 +1103,7 @@ const FANWORK_HEAT_THRESHOLD = 30;
           historicalData
         );
 
-        // 2.8 生成UGC内容（原有逻辑）
+        // 2.8 生成UGC内容
         const sentiment = calculateCommentSentiment({
           satisfaction: adjustedMetrics.satisfaction,
           plotTagMatch: projectQuality.plotScore
@@ -1566,98 +1120,7 @@ const FANWORK_HEAT_THRESHOLD = 30;
           5
         );
 
-        // 2.9 使用内容生成引擎生成内容
-        console.log(`[Simulation] 项目 ${project.name} 开始生成内容...`);
-        const generatedContent = generateContentForProject(project);
-
-        // 应用内容生成对游戏状态的影响
-        const contentImpact = applyContentImpact(
-          generatedContent.comments,
-          generatedContent.confessions,
-          generatedContent.fanworks
-        );
-
-        // 更新声誉
-        if (contentImpact.reputationChange !== 0) {
-          operationMetrics.value.reputation = Math.max(0, Math.min(100,
-            operationMetrics.value.reputation + contentImpact.reputationChange
-          ));
-          console.log(`[Simulation] 内容影响声誉变化: ${contentImpact.reputationChange.toFixed(2)}`);
-        }
-
-        // 同步生成的内容到各个 Store
-        syncContentToStores(
-          project.id,
-          generatedContent.comments,
-          generatedContent.confessions,
-          generatedContent.fanworks
-        );
-
-        console.log(`[Simulation] 项目 ${project.name} 内容生成完成: ` +
-          `${generatedContent.comments.length}条评论, ` +
-          `${generatedContent.confessions.length}条告白, ` +
-          `${generatedContent.fanworks.length}个同人`);
-
-        // 2.10 运营事件和危机检测
-        console.log(`[Simulation] 项目 ${project.name} 执行运营事件和危机检测...`);
-        
-        // 计算负面评论比例
-        const negativeCommentRatio = generatedContent.comments.length > 0
-          ? generatedContent.comments.filter(c => c.sentiment === 'negative').length / generatedContent.comments.length
-          : 0;
-        
-        // 获取项目上线天数
-        const launchDate = project.launchDate ? new Date(project.launchDate) : new Date();
-        const daySinceLaunch = Math.max(1, Math.floor((new Date().getTime() - launchDate.getTime()) / (1000 * 60 * 60 * 24)));
-        
-        // 检测运营事件
-        const incidentResult = checkIncidentTrigger(
-          projectQuality.totalScore,
-          adjustedMetrics.satisfaction,
-          negativeCommentRatio,
-          daySinceLaunch
-        );
-        
-        if (incidentResult.triggered && incidentResult.incidentType && incidentResult.severity) {
-          console.log(`[Simulation] 项目 ${project.name} 触发运营事件: ${incidentResult.incidentType}, 严重程度: ${incidentResult.severity}`);
-          dailyIncidents.value.push(incidentResult);
-          
-          // 触发实际事件
-          const operationStore = useOperationStore();
-          operationStore.triggerIncidentBySimulation(
-            projectQuality.totalScore,
-            adjustedMetrics.satisfaction,
-            negativeCommentRatio,
-            daySinceLaunch
-          );
-        }
-        
-        // 检测危机
-        const recentNegativeIncidentCount = dailyIncidents.value.length;
-        const crisisResult = checkCrisisTrigger(
-          platformStatistics.heat,
-          operationMetrics.value.reputation,
-          recentNegativeIncidentCount,
-          adjustedMetrics.satisfaction,
-          projectQuality.totalScore
-        );
-        
-        if (crisisResult.triggered && crisisResult.crisisType && crisisResult.level) {
-          console.log(`[Simulation] 项目 ${project.name} 触发危机: ${crisisResult.crisisType}, 等级: ${crisisResult.level}`);
-          dailyCrises.value.push(crisisResult);
-          
-          // 创建危机实例
-          const crisis = createCrisisInstance(crisisResult.crisisType, crisisResult.level);
-          if (crisis) {
-            activeCrises.value.push(crisis);
-            
-            // 应用危机影响
-            const crisisImpact = applyCrisisImpact(crisis);
-            console.log(`[Simulation] 危机影响: 声誉${crisisImpact.reputationChange}, 玩家${crisisImpact.playerChange}`);
-          }
-        }
-
-        // 2.10 更新项目运营数据
+        // 2.9 更新项目运营数据
         const operationData: ProjectOperationData = {
           projectId: project.id,
           satisfaction: adjustedMetrics.satisfaction,
@@ -1687,19 +1150,6 @@ const FANWORK_HEAT_THRESHOLD = 30;
         projectOperationData.value.set(project.id, operationData);
         projectComments.value.set(project.id, comments);
         projectConfessions.value.set(project.id, confessions);
-        
-        // ========== 双写到新 Store ==========
-        const projectOpStore = useProjectOperationStore();
-        projectOpStore.initProjectData(project);
-        projectOpStore.updateProjectMetrics(project.id, {
-          dau: operationData.activePlayers,
-          mau: operationData.activePlayers * 5,
-          retention: operationData.retention,
-          satisfaction: operationData.satisfaction / 100,
-          revenue: operationData.dailyRevenue,
-          totalRevenue: operationData.totalRevenue,
-          rating: operationData.rating,
-        });
 
         projectResults.push({
           projectId: project.id,
@@ -1773,35 +1223,45 @@ const FANWORK_HEAT_THRESHOLD = 30;
       // 14. 更新情感分布（基于所有项目评论）
       updateSentimentDistribution();
 
-      // 15. 汇总并更新每日内容生成统计
-      console.log('[Simulation] 汇总每日内容生成统计...');
-      const allGeneratedComments: GeneratedComment[] = [];
-      const allGeneratedConfessions: GeneratedConfession[] = [];
-      const allGeneratedFanworks: GeneratedFanwork[] = [];
-
-      operatingProjects.forEach(project => {
-        const content = generateContentForProject(project);
-        allGeneratedComments.push(...content.comments);
-        allGeneratedConfessions.push(...content.confessions);
-        allGeneratedFanworks.push(...content.fanworks);
-      });
-
-      updateDailyContentStats(
-        allGeneratedComments,
-        allGeneratedConfessions,
-        allGeneratedFanworks
-      );
-
-      console.log(`[Simulation] 今日内容生成统计: ` +
-        `${dailyContentStats.value.comments}条评论, ` +
-        `${dailyContentStats.value.confessions}条告白, ` +
-        `${dailyContentStats.value.fanworks}个同人`);
+      // 15. 记录每日总结报告
+      console.log('[Simulation] 记录每日总结报告...');
+      try {
+        const taskStore = useTaskStore();
+        const totalRevenue = projectResults.reduce((sum, r) => sum + r.operationData.dailyRevenue, 0);
+        const totalExpense = 0; // TODO: 计算实际支出
+        
+        taskStore.addDailyReport({
+          day: currentDay.value,
+          date: new Date().toISOString(),
+          revenue: totalRevenue,
+          expense: totalExpense,
+          newPlayers: projectResults.reduce((sum, r) => sum + r.operationData.newPlayers, 0),
+          lostPlayers: projectResults.reduce((sum, r) => sum + r.operationData.lostPlayers, 0),
+          completedTasks: taskStore.dailyProgress.current,
+          achievements: [] // TODO: 记录当日达成的成就
+        });
+        
+        // 触发每日结算回调
+        if (dailyReportCallback.value) {
+          dailyReportCallback.value({
+            day: currentDay.value,
+            date: new Date().toISOString(),
+            revenue: totalRevenue,
+            expense: totalExpense,
+            newPlayers: projectResults.reduce((sum, r) => sum + r.operationData.newPlayers, 0),
+            lostPlayers: projectResults.reduce((sum, r) => sum + r.operationData.lostPlayers, 0),
+            completedTasks: taskStore.dailyProgress.current,
+            achievements: []
+          });
+        }
+      } catch (reportError) {
+        console.error('[Simulation] 记录每日报告失败:', reportError);
+      }
 
       return {
         day: currentDay.value,
         projectResults,
-        globalMetrics: globalMetrics.value,
-        contentStats: dailyContentStats.value
+        globalMetrics: globalMetrics.value
       };
     } catch (e) {
       error.value = e instanceof Error ? e.message : '模拟运行失败';
@@ -1892,76 +1352,10 @@ const FANWORK_HEAT_THRESHOLD = 30;
       worldImpact.value = impact;
     }
 
-    // ========== 竞品AI决策 ==========
-    if (competitorAIEngine.value && competitorEventEngine.value && competitors.value.length > 0) {
-      const marketState: MarketState = {
-        trendingGenres: ['科幻恋爱', '都市恋爱'],
-        seasonEffect: 0.2,
-        saturation: 0.7,
-        totalMarketSize: 1000000,
-      };
-      
-      const playerState: PlayerCompanyState = {
-        totalPlayers: globalMetrics.value.totalActivePlayers,
-        revenue: globalMetrics.value.totalRevenue,
-        satisfaction: globalMetrics.value.averageSatisfaction,
-        threatLevel: 0.5,
-      };
-      
-      // 每个竞品公司独立决策
-      const actionsMap = new Map<string, AIAction[]>();
-      for (const competitor of competitors.value) {
-        const actions = competitorAIEngine.value.dailyDecision(
-          competitor,
-          marketState,
-          playerState,
-          currentDay.value
-        );
-        actionsMap.set(competitor.id, actions);
-      }
-      
-      // 生成竞品动态消息
-      const news = competitorEventEngine.value.generateCompetitorNews(
-        competitors.value,
-        actionsMap,
-        currentDay.value
-      );
-      
-      // 保留最近20条新闻
-      competitorNews.value = [...competitorNews.value, ...news].slice(-20);
-    }
-
     // 生成平台评论数据
     const commentSim = new CommentSimulator();
     rawPlatformComments.value = commentSim.simulateCommentsForPlayers(sampledPlayers, getCurrentContentTags(), []);
     platformStatistics.value = commentSim.getPlatformStatistics(rawPlatformComments.value);
-    
-    // ========== 双写到 analyticsStore ==========
-    const analyticsStore = useAnalyticsStore();
-    const tickContext: TickContext = {
-      day: currentDay.value,
-      publishedProjects: projectStore.operatingProjects,
-      globalMetrics: {
-        totalPlayers: globalMetrics.value.totalActivePlayers,
-        totalRevenue: globalMetrics.value.totalRevenue,
-        averageSatisfaction: globalMetrics.value.averageSatisfaction,
-      },
-    };
-    analyticsStore.recalculate(tickContext);
-    
-    // ========== Phase 5: 协调者模式 - 调用各子 Store 的 onDailyTick ==========
-    const fanworkStore = useFanworkStore();
-    const commentStoreStore = useCommentStore();
-    const confessionStoreStore = useConfessionStore();
-    
-    // 调用各子 Store 的 onDailyTick 进行内容生成
-    fanworkStore.onDailyTick(tickContext);
-    commentStoreStore.onDailyTick(tickContext);
-    confessionStoreStore.onDailyTick(tickContext);
-    
-    // 调用 projectOperationStore 的 onDailyTick
-    const projectOpStore = useProjectOperationStore();
-    projectOpStore.onDailyTick(tickContext);
 
     // 转换为UI格式
     commentMetrics.value = {
@@ -2096,64 +1490,88 @@ const FANWORK_HEAT_THRESHOLD = 30;
   }
 
   function getCurrentActivity(): ActivityConfig {
-    const activities: ActivityConfig[] = [
-      {
-        id: 'valentine',
-        name: '情人节限定活动',
-        type: '限时',
-        tags: ['情人节', '高福利'],
-        rewardValue: 100,
-        difficulty: 3,
-        duration: 7,
-        requiredLevel: 5,
-        startDay: currentDay.value,
-        endDay: currentDay.value + 7
-      },
-      {
-        id: 'daily_signin',
-        name: '每日签到',
-        type: '日常',
-        tags: ['签到'],
-        rewardValue: 10,
-        difficulty: 1,
-        duration: 1,
-        requiredLevel: 1,
-        startDay: currentDay.value,
-        endDay: currentDay.value
-      },
-      {
-        id: 'anniversary',
-        name: '周年庆典',
-        type: '大型',
-        tags: ['周年庆', '高福利'],
-        rewardValue: 200,
-        difficulty: 5,
-        duration: 14,
-        requiredLevel: 10,
-        startDay: currentDay.value,
-        endDay: currentDay.value + 14
-      }
-    ];
-
+    const activities: ActivityConfig[] = getActivitiesFromConfig();
     return activities[currentDay.value % activities.length];
   }
 
+  function getActivitiesFromConfig(): ActivityConfig[] {
+    try {
+      const activitiesConfig = require('@/config/activities.json');
+      return (activitiesConfig.activities || []).map((activity: any) => ({
+        ...activity,
+        startDay: currentDay.value,
+        endDay: currentDay.value + activity.duration
+      }));
+    } catch (error) {
+      console.error('加载活动配置失败:', error);
+      return [
+        {
+          id: 'daily_signin',
+          name: '每日签到',
+          type: '日常',
+          tags: ['签到'],
+          rewardValue: 10,
+          difficulty: 1,
+          duration: 1,
+          requiredLevel: 1,
+          startDay: currentDay.value,
+          endDay: currentDay.value
+        }
+      ];
+    }
+  }
+
   function getCurrentCharacterTags(): string[] {
-    const tagPool = ['病娇', '温柔', '高冷', '甜宠', '治愈', '傲娇'];
+    const tagPool = getTagsFromConfig().characterTags;
     const count = 1 + Math.floor(Math.random() * 2);
     const shuffled = [...tagPool].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, count);
   }
 
   function getCurrentCharacterNames(): string[] {
-    const names = ['冰山总裁', '温柔医生', '阳光学弟', '病娇竹马'];
+    const names = getNamesFromConfig().characterNames;
     const count = 1 + Math.floor(Math.random() * 2);
-    return names.slice(0, count);
+    const shuffled = [...names].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
   }
 
   function getCurrentContentTags(): string[] {
-    const tags = ['甜宠', '虐恋', '高福利', '长剧情'];
-    return tags.slice(0, 2);
+    const tags = getTagsFromConfig().contentTags;
+    const count = 2;
+    const shuffled = [...tags].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, count);
+  }
+
+  function getTagsFromConfig(): { characterTags: string[]; contentTags: string[] } {
+    try {
+      const tagsConfig = require('@/config/tags.json');
+      return {
+        characterTags: tagsConfig.characterTags || ['温柔', '高冷'],
+        contentTags: tagsConfig.contentTags || ['甜宠', '虐恋']
+      };
+    } catch (error) {
+      console.error('加载标签配置失败:', error);
+      return {
+        characterTags: ['温柔', '高冷', '甜宠', '治愈', '傲娇'],
+        contentTags: ['甜宠', '虐恋', '高福利', '长剧情']
+      };
+    }
+  }
+
+  function getNamesFromConfig(): { characterNames: string[]; playerNames: string[] } {
+    try {
+      const namesConfig = require('@/config/names.json');
+      return {
+        characterNames: namesConfig.characterNames || ['角色A', '角色B'],
+        playerNames: namesConfig.playerNames || ['玩家1', '玩家2']
+      };
+    } catch (error) {
+      console.error('加载名称配置失败:', error);
+      return {
+        characterNames: ['冰山总裁', '温柔医生', '阳光学弟', '病娇竹马'],
+        playerNames: ['小可爱', '游戏达人', '剧情党']
+      };
+    }
   }
 
   // 辅助函数：计算情感得分 (-100 到 100)
@@ -2412,20 +1830,6 @@ function getHistory(): SimulationResult[] {
     };
     projectComments.value = new Map();
     projectConfessions.value = new Map();
-    // 重置内容生成相关状态
-    dailyContentStats.value = {
-      comments: 0,
-      confessions: 0,
-      fanworks: 0,
-      hotComments: [],
-      hotConfessions: [],
-      hotFanworks: []
-    };
-    contentGenerationHistory.value = [];
-    // 重置运营事件和危机状态
-    dailyIncidents.value = [];
-    dailyCrises.value = [];
-    activeCrises.value = [];
     localStorage.removeItem('simulation_data');
   }
 
@@ -2461,12 +1865,6 @@ function getHistory(): SimulationResult[] {
     dailyEventEngine,
     triggeredEvents,
     pendingNeutralEvents,
-    // 竞品AI系统导出
-    competitors,
-    competitorNews,
-    // 内容生成相关导出
-    dailyContentStats,
-    contentGenerationHistory,
     initialize,
     tick,
     getHistory,
@@ -2486,9 +1884,10 @@ function getHistory(): SimulationResult[] {
     reset,
     // Phase 5: 事件处理函数
     handleNeutralEventChoice,
-    // 内容生成相关函数
-    generateContentForProject,
-    applyContentImpact,
-    syncContentToStores
+    // Phase 5.5: 扩展事件支持函数
+    removePendingEvent,
+    applyCustomEventImpact,
+    // 每日结算回调
+    setDailyReportCallback
   };
 });

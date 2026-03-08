@@ -341,7 +341,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { TemplateManager } from '@/utils/templateManager';
 import { usePointsStore } from '@/stores/points';
@@ -419,115 +419,22 @@ const plotBranchData = computed<PlotBranch | null>(() => {
   };
 });
 
-// 剧情模板
-const sweetTemplates = ref([
-  {
-    id: 'sweet_001',
-    routeType: 'sweet',
-    title: '樱花树下的初遇',
-    summary: '在樱花盛开的季节，你与新来的转校生在樱花树下意外相遇，从此展开甜蜜的校园恋爱故事。',
-    chapters: [
-      {
-        chapter: 1,
-        title: '樱花雨中的邂逅',
-        scene: '樱花飘落的校园小道',
-        keyEvent: '你抱着书本匆忙赶路，撞上了迎面走来的他，书本散落一地。',
-        choices: ['道歉并帮忙捡书', '默默捡起自己的书离开', '责备他走路不看路'],
-        selectedChoice: 0
-      },
-      {
-        chapter: 2,
-        title: '意外的同桌',
-        scene: '高二（3）班教室',
-        keyEvent: '老师宣布调座位，他成为了你的新同桌。',
-        choices: ['友好打招呼', '保持距离', '假装不认识'],
-        selectedChoice: 0
-      },
-      {
-        chapter: 3,
-        title: '图书馆的独处',
-        scene: '学校图书馆',
-        keyEvent: '放学后你在图书馆学习，发现他也在这里。',
-        choices: ['主动搭话', '假装没看见', '换到别的位置'],
-        selectedChoice: 0
-      }
-    ],
-    difficulty: '简单'
-  },
-  {
-    id: 'sweet_002',
-    routeType: 'sweet',
-    title: '咖啡店的邂逅',
-    summary: '在常去的咖啡店里，你遇到了一个神秘的陌生人，从此生活发生了改变。',
-    chapters: [
-      {
-        chapter: 1,
-        title: '拿铁与美式',
-        scene: '街角咖啡店',
-        keyEvent: '你点错了咖啡，他主动跟你交换。',
-        choices: ['感谢并接受', '婉拒', '请他喝咖啡作为感谢'],
-        selectedChoice: 0
-      },
-      {
-        chapter: 2,
-        title: '再次相遇',
-        scene: '咖啡店',
-        keyEvent: '第二天你又遇到了他，原来他是新来的咖啡师。',
-        choices: ['惊喜地打招呼', '装作不认识', '调侃他'],
-        selectedChoice: 0
-      }
-    ],
-    difficulty: '简单'
-  }
-]);
+// 剧情模板 - 从配置文件加载
+const sweetTemplates = ref<any[]>([]);
+const angstTemplates = ref<any[]>([]);
+const suspenseTemplates = ref<any[]>([]);
 
-const angstTemplates = ref([
-  {
-    id: 'angst_001',
-    routeType: 'angst',
-    title: '错过的时光',
-    summary: '青梅竹马的你和他，因为一场误会而分离，多年后重逢，能否解开误会？',
-    chapters: [
-      {
-        chapter: 1,
-        title: '童年回忆',
-        scene: '老家的小巷',
-        keyEvent: '你回到老家，意外遇到了小时候的玩伴。',
-        choices: ['装作不认识', '主动打招呼', '默默观察'],
-        selectedChoice: 0
-      },
-      {
-        chapter: 2,
-        title: '当年的误会',
-        scene: '旧居',
-        keyEvent: '他提起当年的误会，你才知道真相。',
-        choices: ['解释清楚', '保持沉默', '责怪他'],
-        selectedChoice: 0
-      }
-    ],
-    difficulty: '中等'
+const loadPlotTemplates = async () => {
+  try {
+    const templates = await TemplateManager.getAllPlotTemplates();
+    sweetTemplates.value = templates.sweet || [];
+    angstTemplates.value = templates.angst || [];
+    suspenseTemplates.value = templates.suspense || [];
+  } catch (error) {
+    console.error('加载剧情模板失败:', error);
+    showToast('剧情模板加载失败');
   }
-]);
-
-const suspenseTemplates = ref([
-  {
-    id: 'suspense_001',
-    routeType: 'suspense',
-    title: '午夜钟声',
-    summary: '古老的钟楼每到午夜就会响起神秘的钟声，而你发现这背后隐藏着一个惊人的秘密。',
-    chapters: [
-      {
-        chapter: 1,
-        title: '神秘钟声',
-        scene: '古老钟楼',
-        keyEvent: '你听到午夜钟声，发现钟楼里有人影。',
-        choices: ['上去查看', '报警', '装作没看见'],
-        selectedChoice: 0
-      }
-    ],
-    difficulty: '困难'
-  }
-]);
+};
 
 // 当前显示的模板
 const currentTemplates = computed(() => {
@@ -751,6 +658,10 @@ function openPlotTreeEditor() {
   });
   window.open(route.href, '_blank');
 }
+
+onMounted(() => {
+  loadPlotTemplates();
+});
 </script>
 
 <style scoped lang="scss">

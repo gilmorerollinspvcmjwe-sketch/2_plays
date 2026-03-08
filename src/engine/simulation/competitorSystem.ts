@@ -1,3 +1,5 @@
+import type { AIPersonality } from '@/types/competitor';
+
 export interface Competitor {
   id: string;
   name: string;
@@ -9,6 +11,7 @@ export interface Competitor {
   dau: number;
   marketShare: number;
   recentTrend: '上升' | '平稳' | '下滑';
+  personality: AIPersonality;
 }
 
 export interface CompetitorEffect {
@@ -31,6 +34,7 @@ const COMPETITOR_NAMES = [
 
 const GENRES = ['甜宠', '虐恋', '悬疑', '治愈', '搞笑'];
 const STYLES = ['唯美', '写实', '二次元', '韩漫', '日漫'];
+const PERSONALITIES: AIPersonality[] = ['innovator', 'steady', 'monetizer', 'disruptor', 'craftsman', 'learner'];
 
 export class CompetitorSystem {
   private competitors: Competitor[] = [];
@@ -64,7 +68,8 @@ export class CompetitorSystem {
         rating,
         dau,
         marketShare: 0.05 + Math.random() * 0.25,
-        recentTrend: '平稳'
+        recentTrend: '平稳',
+        personality: PERSONALITIES[Math.floor(Math.random() * PERSONALITIES.length)]
       });
     }
 

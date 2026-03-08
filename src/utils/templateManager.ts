@@ -4,6 +4,7 @@
  */
 
 import { characterTemplates } from '@/data/templates/characters';
+import plotTemplatesData from '@/data/plotTemplates.json';
 import type {
   CharacterTemplate,
   CharacterCategory,
@@ -18,6 +19,24 @@ import type {
   IncidentType,
   TemplateStats
 } from '@/types/template';
+
+export interface PlotChapter {
+  chapter: number;
+  title: string;
+  scene: string;
+  keyEvent: string;
+  choices: string[];
+  selectedChoice: number;
+}
+
+export interface PlotTemplateData {
+  id: string;
+  routeType: 'sweet' | 'angst' | 'suspense';
+  title: string;
+  summary: string;
+  chapters: PlotChapter[];
+  difficulty: string;
+}
 
 export class TemplateManager {
   /**
@@ -111,5 +130,35 @@ export class TemplateManager {
       character: this.getRandomCharacter(),
       comment: this.getRandomComment()
     };
+  }
+
+  /**
+   * 获取剧情模板
+   * @param routeType 剧情类型：甜宠/虐恋/悬疑
+   */
+  static getPlotTemplates(routeType: 'sweet' | 'angst' | 'suspense'): PlotTemplateData[] {
+    return plotTemplatesData[routeType] || [];
+  }
+
+  /**
+   * 获取所有剧情模板
+   */
+  static getAllPlotTemplates(): Record<string, PlotTemplateData[]> {
+    return plotTemplatesData;
+  }
+
+  /**
+   * 随机获取剧情模板
+   * @param routeType 可选，剧情类型
+   */
+  static getRandomPlotTemplate(routeType?: 'sweet' | 'angst' | 'suspense'): PlotTemplateData | null {
+    const templates = routeType
+      ? this.getPlotTemplates(routeType)
+      : Object.values(plotTemplatesData).flat();
+    
+    if (templates.length === 0) return null;
+    
+    const randomIndex = Math.floor(Math.random() * templates.length);
+    return templates[randomIndex];
   }
 }

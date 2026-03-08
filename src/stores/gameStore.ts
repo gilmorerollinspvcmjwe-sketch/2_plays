@@ -1123,8 +1123,8 @@ export const useGameStore = defineStore('game', () => {
 
     const reasons: string[] = [];
 
-    // 基础收入
-    let goldIncome = 500;
+    // 基础收入（已调整：500 → 300）
+    let goldIncome = 300;
     let devPointsIncome = 10;
     let popularityIncome = 5;
 
@@ -1132,9 +1132,9 @@ export const useGameStore = defineStore('game', () => {
 
     // 根据游戏状态调整
     if (game.status === 'published') {
-      // 已发布游戏有额外收入
-      const characterBonus = game.characters.length * 100;
-      const plotBonus = game.plots.length * 50;
+      // 已发布游戏有额外收入（已调整：角色 +100 → +50，剧情 +50 → +30）
+      const characterBonus = game.characters.length * 50;
+      const plotBonus = game.plots.length * 30;
 
       goldIncome += characterBonus + plotBonus;
       popularityIncome += Math.floor((characterBonus + plotBonus) / 50);
@@ -1142,9 +1142,9 @@ export const useGameStore = defineStore('game', () => {
       reasons.push(`游戏已发布 (${game.characters.length}角色 + ${game.plots.length}剧情)`);
     }
 
-    // 人气值影响金币收入
+    // 人气值影响金币收入（已调整：×0.1 → ×0.05）
     if (game.resources.popularity > 0) {
-      const popularityBonus = Math.floor(game.resources.popularity * 0.1);
+      const popularityBonus = Math.floor(game.resources.popularity * 0.05);
       goldIncome += popularityBonus;
       if (popularityBonus > 0) {
         reasons.push(`人气值加成 +${popularityBonus}`);
@@ -1850,6 +1850,12 @@ export const useGameStore = defineStore('game', () => {
     
     // 增加经验
     const result = addBondExperience(characterId, config.experience, config.name);
+    
+    // 触发每日任务进度 - 角色互动
+    import('./taskStore').then(({ useTaskStore }) => {
+      const taskStore = useTaskStore();
+      taskStore.updateTaskProgress('daily_character_interact');
+    }).catch(e => console.warn('更新任务进度失败:', e));
     
     return {
       success: result.success,

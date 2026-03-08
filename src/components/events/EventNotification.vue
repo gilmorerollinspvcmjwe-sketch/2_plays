@@ -21,7 +21,7 @@
         </div>
 
         <!-- 事件影响列表 -->
-        <div class="event-impacts" v-if="showEventImpacts">
+        <div class="event-impacts" v-if="showEventImpacts && currentEvent">
           <h4>事件影响：</h4>
           <ul>
             <li 
@@ -34,8 +34,35 @@
           </ul>
         </div>
 
+        <!-- 扩展事件选项描述 -->
+        <div class="event-options-description" v-if="hasEventOptions(currentEvent)">
+          <h4>选择方案：</h4>
+          <div 
+            v-for="(option, index) in (currentEvent as ExtendedDailyEvent).options"
+            :key="index"
+            class="option-item"
+          >
+            <div class="option-label">{{ option.label }}</div>
+            <div class="option-description" v-if="option.description">{{ option.description }}</div>
+          </div>
+        </div>
+
         <!-- 中性事件选择按钮 -->
-        <div class="event-actions" v-if="currentEvent?.category === 'neutral'">
+        <div class="event-actions" v-if="hasEventOptions(currentEvent)">
+          <van-button
+            v-for="(option, index) in (currentEvent as ExtendedDailyEvent).options"
+            :key="index"
+            :type="index === 0 ? 'primary' : 'default'"
+            size="large"
+            @click="handleOptionSelect(option)"
+            :class="index === 0 ? 'action-btn accept-btn' : 'action-btn reject-btn'"
+          >
+            {{ option.label }}
+          </van-button>
+        </div>
+
+        <!-- 普通中性事件按钮 -->
+        <div class="event-actions" v-else-if="currentEvent?.category === 'neutral'">
           <van-button
             type="primary"
             size="large"
@@ -121,6 +148,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import type { DailyEvent } from '@/engine/dailyEventEngine';
+import type { ExtendedDailyEvent } from '@/engine/extendedEventLibrary';
 import { useSimulationStore } from '@/stores/simulationStore';
 
 // Props
@@ -144,7 +172,7 @@ const simulationStore = useSimulationStore();
 
 // State
 const showEventDialog = ref(false);
-const currentEvent = ref<DailyEvent | null>(null);
+const currentEvent = ref<DailyEvent | ExtendedDailyEvent | null>(null);
 const activeNames = ref<(string | number)[]>([]);
 
 // Computed
@@ -159,6 +187,11 @@ watch(() => simulationStore.pendingNeutralEvents, (newEvents) => {
 }, { deep: true });
 
 // Methods
+function hasEventOptions(event: DailyEvent | ExtendedDailyEvent | null): boolean {
+  if (!event) return false;
+  return 'options' in event && Array.isArray(event.options) && event.options.length > 0;
+}
+
 function getEventIconClass(category?: string): string {
   switch (category) {
     case 'positive':
@@ -303,6 +336,17 @@ function handleReject() {
   }
 }
 
+function handleOptionSelect(option: { label: string; impact: any; description?: string }) {
+  if (currentEvent.value) {
+    // 应用选项的影响
+    simulationStore.applyCustomEventImpact(option.impact);
+    // 从待处理队列中移除
+    simulationStore.removePendingEvent(currentEvent.value.id);
+    emit('event-handled', currentEvent.value.id, true);
+    closeDialog();
+  }
+}
+
 function handleConfirm() {
   closeDialog();
 }
@@ -399,6 +443,46 @@ function formatEventTime(timestamp: string): string {
           &.impact-negative {
             color: #ff4d4f;
           }
+        }
+      }
+    }
+
+    .event-options-description {
+      text-align: left;
+      background: #f0f7ff;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #d6e4ff;
+
+      h4 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        color: #666;
+      }
+
+      .option-item {
+        padding: 10px;
+        background: #fff;
+        border-radius: 6px;
+        margin-bottom: 8px;
+        border-left: 3px solid #1890ff;
+
+        .option-label {
+          font-size: 14px;
+          font-weight: 500;
+          color: #1890ff;
+          margin-bottom: 5px;
+        }
+
+        .option-description {
+          font-size: 13px;
+          color: #666;
+          line-height: 1.5;
+        }
+
+        &:last-child {
+          margin-bottom: 0;
         }
       }
     }

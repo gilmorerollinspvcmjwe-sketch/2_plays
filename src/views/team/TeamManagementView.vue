@@ -317,8 +317,13 @@ function viewEmployee(employee: Employee) {
   showEmployeeDetail.value = true;
 }
 
-function goToRecruit() {
-  router.push('/recruit');
+async function goToRecruit() {
+  try {
+    await router.push('/recruit');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 async function restAll() {

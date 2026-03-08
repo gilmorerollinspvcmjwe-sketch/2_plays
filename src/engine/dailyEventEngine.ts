@@ -1,5 +1,6 @@
 import type { Employee } from '@/types/employee';
 import type { ProjectOperationData } from '@/types/simulation';
+import { ExtendedEventGenerator, type ExtendedEventType, type ExtendedDailyEvent } from './extendedEventLibrary';
 
 export type DailyEventType = 
   | 'employee_sick'
@@ -10,7 +11,8 @@ export type DailyEventType =
   | 'server_crash'
   | 'negative_publicity'
   | 'player_request'
-  | 'collaboration_invite';
+  | 'collaboration_invite'
+  | ExtendedEventType;
 
 export interface DailyEvent {
   id: string;
@@ -35,6 +37,8 @@ export interface DailyEvent {
 export interface DailyEventResult {
   events: DailyEvent[];
 }
+
+export type CombinedDailyEvent = DailyEvent | ExtendedDailyEvent;
 
 function generateId(): string {
   return `evt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -353,18 +357,21 @@ export class DailyEventEngine {
   private positiveGenerator: PositiveEventGenerator;
   private negativeGenerator: NegativeEventGenerator;
   private neutralGenerator: NeutralEventGenerator;
+  private extendedGenerator: ExtendedEventGenerator;
 
   constructor() {
     this.employeeGenerator = new EmployeeEventGenerator();
     this.positiveGenerator = new PositiveEventGenerator();
     this.negativeGenerator = new NegativeEventGenerator();
     this.neutralGenerator = new NeutralEventGenerator();
+    this.extendedGenerator = new ExtendedEventGenerator();
   }
 
   triggerEvents(params: {
     employees: Employee[];
     projectIds: string[];
     characterNames: string[];
+    projectData?: Map<string, ProjectOperationData>;
   }): DailyEventResult {
     const events: DailyEvent[] = [];
 
@@ -383,6 +390,15 @@ export class DailyEventEngine {
     const neutralEvents = this.neutralGenerator.generate(params.characterNames);
     events.push(...neutralEvents);
 
+    // 添加扩展事件（Phase 5.5 新增）
+    const extendedEvents = this.extendedGenerator.generate({
+      employees: params.employees,
+      projectIds: params.projectIds,
+      characterNames: params.characterNames,
+      projectData: params.projectData,
+    });
+    events.push(...extendedEvents);
+
     return {
       events,
     };
@@ -395,6 +411,7 @@ export function triggerEvents(params: {
   employees: Employee[];
   projectIds: string[];
   characterNames: string[];
+  projectData?: Map<string, ProjectOperationData>;
 }): DailyEventResult {
   return DailyEventEngineInstance.triggerEvents(params);
 }

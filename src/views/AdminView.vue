@@ -286,23 +286,27 @@ function getSegmentAction(state: PlayerState): PlayerSegmentAction | undefined {
   return segmentActions.value.find(a => a.segment === state);
 }
 
-function executeSuggestedAction(action: PlayerSegmentAction) {
+async function executeSuggestedAction(action: PlayerSegmentAction) {
   const { type, template } = action.suggestedAction;
 
-  router.push({
-    path: '/operation',
-    query: {
-      action: type,
-      template: JSON.stringify(template),
-      segment: action.segment,
-      count: action.count.toString()
-    }
-  });
-
-  showToast(`正在跳转到运营页面，预填充${action.suggestedAction.title}配置`);
+  try {
+    await router.push({
+      path: '/operation',
+      query: {
+        action: type,
+        template: JSON.stringify(template),
+        segment: action.segment,
+        count: action.count.toString()
+      }
+    });
+    showToast(`正在跳转到运营页面，预填充${action.suggestedAction.title}配置`);
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function executeBatchRecall() {
+async function executeBatchRecall() {
   const lostCount = playerStats.value[PlayerState.LOST] || 0;
   const atRiskCount = playerStats.value[PlayerState.AT_RISK] || 0;
   const totalCount = lostCount + atRiskCount;
@@ -312,22 +316,26 @@ function executeBatchRecall() {
     return;
   }
 
-  router.push({
-    path: '/operation',
-    query: {
-      action: 'welfare',
-      template: JSON.stringify({
-        type: 'batch_recall',
-        diamonds: 200,
-        tickets: 10,
-        description: `批量召回 ${totalCount} 名流失/风险玩家`
-      }),
-      segment: 'batch',
-      count: totalCount.toString()
-    }
-  });
-
-  showToast('正在跳转到运营页面，执行批量召回');
+  try {
+    await router.push({
+      path: '/operation',
+      query: {
+        action: 'welfare',
+        template: JSON.stringify({
+          type: 'batch_recall',
+          diamonds: 200,
+          tickets: 10,
+          description: `批量召回 ${totalCount} 名流失/风险玩家`
+        }),
+        segment: 'batch',
+        count: totalCount.toString()
+      }
+    });
+    showToast('正在跳转到运营页面，执行批量召回');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 function initializeData() {

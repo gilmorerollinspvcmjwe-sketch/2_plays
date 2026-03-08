@@ -627,26 +627,51 @@ async function startOperation() {
   }
 }
 
-function manageTeam() {
-  router.push('/team-management');
+async function manageTeam() {
+  try {
+    await router.push('/team-management');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function createCharacter() {
+async function createCharacter() {
   projectStore.setCurrentProject(projectId.value);
-  router.push('/creator/character');
+  try {
+    await router.push('/creator/character');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function viewCharacter(characterId: string) {
-  router.push(`/game/${projectId.value}/character/${characterId}`);
+async function viewCharacter(characterId: string) {
+  try {
+    await router.push(`/game/${projectId.value}/character/${characterId}`);
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function createPlot() {
+async function createPlot() {
   projectStore.setCurrentProject(projectId.value);
-  router.push('/creator/plot');
+  try {
+    await router.push('/creator/plot');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function viewPlot(plotId: string) {
-  router.push('/creator/plot/editor');
+async function viewPlot(plotId: string) {
+  try {
+    await router.push('/creator/plot/editor');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 onMounted(() => {

@@ -1,0 +1,114 @@
+{
+  "festivals": [
+    {
+      "id": "valentine",
+      "name": "情人节活动",
+      "month": 2,
+      "day": 14,
+      "durationDays": 7,
+      "description": "浪漫情人节，限定剧情与服装上线",
+      "bonusMultiplier": 2.5,
+      "specialEvents": ["情人节限定卡池", "约会剧情", "情侣服装"],
+      "impact": "high"
+    },
+    {
+      "id": "white_day",
+      "name": "白色情人节",
+      "month": 3,
+      "day": 14,
+      "durationDays": 7,
+      "description": "回礼之日，特别剧情与道具",
+      "bonusMultiplier": 2.0,
+      "specialEvents": ["回礼剧情", "限定道具", "双倍掉落"],
+      "impact": "medium"
+    },
+    {
+      "id": "labor_day",
+      "name": "五一活动",
+      "month": 5,
+      "day": 1,
+      "durationDays": 7,
+      "description": "劳动节假期活动",
+      "bonusMultiplier": 2.0,
+      "specialEvents": ["登录奖励", "限时副本", "限定道具"],
+      "impact": "medium"
+    },
+    {
+      "id": "anniversary",
+      "name": "周年庆典",
+      "month": 1,
+      "day": 1,
+      "durationDays": 10,
+      "description": "游戏周年庆，海量福利与活动",
+      "bonusMultiplier": 3.0,
+      "specialEvents": ["周年限定角色", "登录奖励", "特别剧情"],
+      "impact": "high"
+    },
+    {
+      "id": "qixi",
+      "name": "七夕节",
+      "month": 8,
+      "day": 22,
+      "durationDays": 7,
+      "description": "牛郎织女相会之日，浪漫活动开启",
+      "bonusMultiplier": 2.5,
+      "specialEvents": ["七夕限定卡池", "鹊桥剧情", "情侣套装"],
+      "impact": "high"
+    },
+    {
+      "id": "mid_autumn",
+      "name": "中秋节",
+      "month": 9,
+      "day": 29,
+      "durationDays": 5,
+      "description": "月圆人团圆，中秋特别活动",
+      "bonusMultiplier": 1.8,
+      "specialEvents": ["月饼收集", "赏月剧情", "登录福利"],
+      "impact": "medium"
+    },
+    {
+      "id": "national_day",
+      "name": "国庆活动",
+      "month": 10,
+      "day": 1,
+      "durationDays": 7,
+      "description": "国庆长假特别活动",
+      "bonusMultiplier": 2.2,
+      "specialEvents": ["国庆限定角色", "限时副本", "双倍经验"],
+      "impact": "high"
+    },
+    {
+      "id": "halloween",
+      "name": "万圣节",
+      "month": 10,
+      "day": 31,
+      "durationDays": 5,
+      "description": "不给糖就捣蛋，万圣节特别活动",
+      "bonusMultiplier": 1.8,
+      "specialEvents": ["万圣节皮肤", "糖果收集", "特别剧情"],
+      "impact": "medium"
+    },
+    {
+      "id": "christmas",
+      "name": "圣诞节",
+      "month": 12,
+      "day": 25,
+      "durationDays": 7,
+      "description": "圣诞快乐，冬日浪漫活动",
+      "bonusMultiplier": 2.3,
+      "specialEvents": ["圣诞限定卡池", "礼物交换", "雪景剧情"],
+      "impact": "high"
+    },
+    {
+      "id": "new_year",
+      "name": "元旦活动",
+      "month": 1,
+      "day": 1,
+      "durationDays": 5,
+      "description": "新年快乐，新年特别活动",
+      "bonusMultiplier": 2.0,
+      "specialEvents": ["新年限定角色", "登录奖励", "新年剧情"],
+      "impact": "medium"
+    }
+  ]
+}

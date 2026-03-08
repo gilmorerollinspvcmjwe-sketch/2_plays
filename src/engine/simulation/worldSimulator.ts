@@ -1,6 +1,7 @@
 import { CompetitorSystem, type Competitor, type CompetitorEffect } from './competitorSystem';
 import { MarketTrendSystem, type GenreTrend, type SeasonalHot, type MarketTrendEffect } from './marketTrendSystem';
 import { IndustryEventSystem, type IndustryEvent, type IndustryEventResult } from './industryEventSystem';
+import { CompetitorNewsSystem, type CompetitorNews } from '../market/competitorNewsSystem';
 
 export interface WorldImpact {
   company: {
@@ -25,6 +26,7 @@ export interface WorldState {
   genreTrends: GenreTrend[];
   seasonalHots: SeasonalHot[];
   recentIndustryEvent: IndustryEvent | null;
+  competitorNews: CompetitorNews[];
   lastUpdate: number;
 }
 
@@ -32,18 +34,21 @@ export class WorldSimulator {
   private competitorSystem: CompetitorSystem;
   private marketTrendSystem: MarketTrendSystem;
   private industryEventSystem: IndustryEventSystem;
+  private competitorNewsSystem: CompetitorNewsSystem;
   private lastUpdate: number = 0;
 
   constructor() {
     this.competitorSystem = new CompetitorSystem();
     this.marketTrendSystem = new MarketTrendSystem();
     this.industryEventSystem = new IndustryEventSystem();
+    this.competitorNewsSystem = new CompetitorNewsSystem();
   }
 
   initialize(day: number): void {
     this.competitorSystem.initialize(day);
     this.marketTrendSystem.initialize(day);
     this.industryEventSystem.initialize(day);
+    this.competitorNewsSystem.initialize(day);
     this.lastUpdate = day;
   }
 
@@ -52,6 +57,9 @@ export class WorldSimulator {
     this.marketTrendSystem.update(day);
     
     const eventResult = this.industryEventSystem.simulate(day);
+    
+    this.competitorNewsSystem.update(day);
+    this.competitorNewsSystem.generateNews(this.competitorSystem.getCompetitors(), day);
     
     this.lastUpdate = day;
   }
@@ -63,13 +71,19 @@ export class WorldSimulator {
     
     const eventResult = this.industryEventSystem.simulate(this.lastUpdate);
     
+    const recentNews = this.competitorNewsSystem.getCompetitorNews(10);
+    const combinedImpact = this.competitorNewsSystem.calculateCombinedImpact(recentNews);
+    
+    const newsImpact = combinedImpact.totalImpact;
+    
     const companyImpact: WorldImpact['company'] = {
-      cashChange: 0,
+      cashChange: Math.floor(newsImpact.revenueImpact * 100),
       reputationChange: competitorEffect.activityChange > 0 ? 1 : -1
     };
     
+    const dauChangeFromNews = Math.floor(newsImpact.marketSentiment * newsImpact.playerMigrationRisk * 10);
     const projectImpact: WorldImpact['project'] = {
-      dauChange: competitorEffect.dauChange,
+      dauChange: competitorEffect.dauChange + dauChangeFromNews,
       ratingChange: eventResult.effects?.project.ratingChange ?? 0,
       newUsersChange: competitorEffect.newUsersChange + (eventResult.effects?.project.newUsersChange ?? 0),
       activityChange: competitorEffect.activityChange
@@ -90,8 +104,14 @@ export class WorldSimulator {
           revenueChange += eventResult.event.characterImpact.effect;
         }
         
+        const newsRevenueMultiplier = 1 + newsImpact.revenueImpact;
+        revenueChange = Math.floor(revenueChange * newsRevenueMultiplier);
+        
         const seasonalMultiplier = marketEffect.seasonalMultiplier;
         revenueChange = Math.floor(revenueChange * seasonalMultiplier);
+        
+        const newsChurnAdjustment = newsImpact.playerMigrationRisk * 10;
+        churnRiskChange += newsChurnAdjustment;
         
         characters.set(charId, {
           revenueChange,
@@ -142,12 +162,17 @@ export class WorldSimulator {
     return this.industryEventSystem.getEventHistory();
   }
 
+  getCompetitorNews(limit?: number): CompetitorNews[] {
+    return this.competitorNewsSystem.getCompetitorNews(limit);
+  }
+
   getState(): WorldState {
     return {
       competitors: this.competitorSystem.getCompetitors(),
       genreTrends: Array.from(this.marketTrendSystem.getGenreTrends().values()),
       seasonalHots: this.marketTrendSystem.getSeasonalHots(),
       recentIndustryEvent: this.industryEventSystem.getLastEvent(),
+      competitorNews: this.competitorNewsSystem.getCompetitorNews(),
       lastUpdate: this.lastUpdate
     };
   }
@@ -169,6 +194,10 @@ export class WorldSimulator {
         lastTriggerDay: state.lastUpdate
       });
     }
+    this.competitorNewsSystem.setState({
+      news: state.competitorNews,
+      lastUpdate: state.lastUpdate
+    });
   }
 }
 

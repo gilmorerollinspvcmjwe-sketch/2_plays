@@ -163,18 +163,20 @@ const trendData = ref<{
   new: number[];
 }>({
   dates: ['6天前', '5天前', '4天前', '3天前', '2天前', '昨天', '今天'],
-  active: [450, 480, 520, 490, 510, 530, 0],
-  lost: [10, 15, 8, 20, 12, 18, 0],
-  new: [30, 45, 25, 50, 35, 40, 0]
+  active: [0, 0, 0, 0, 0, 0, 0],
+  lost: [0, 0, 0, 0, 0, 0, 0],
+  new: [0, 0, 0, 0, 0, 0, 0]
 });
 
 const playerStateStats = computed(() => playerStore.getPlayerStateStats());
 
-const recentChanges = ref([
-  { id: '1', playerId: 'p1', playerName: '张三', type: 'lost', time: '2 小时前' },
-  { id: '2', playerId: 'p2', playerName: '李四', type: 'returned', time: '5 小时前' },
-  { id: '3', playerId: 'p3', playerName: '王五', type: 'lost', time: '1 天前' }
-]);
+const recentChanges = ref<Array<{
+  id: string;
+  playerId: string;
+  playerName: string;
+  type: 'lost' | 'returned';
+  time: string;
+}>>([]);
 
 function handleManualSettle() {
   operationStore.simulateOneDay();

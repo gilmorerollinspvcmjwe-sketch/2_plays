@@ -535,24 +535,53 @@ function getRouteLabel(type: string) {
   return map[type] || type;
 }
 
-function goToCreator() {
-  router.push('/creator/character');
+async function goToCreator() {
+  try {
+    await router.push('/creator/character');
+  } catch (error) {
+    console.error('导航到创作者中心失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToPlot() {
-  router.push('/creator/plot');
+async function goToPlot() {
+  try {
+    await router.push('/creator/plot');
+  } catch (error) {
+    console.error('导航到剧情设计失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToPublish() {
-  router.push('/publish');
+async function goToPublish() {
+  try {
+    await router.push('/publish');
+  } catch (error) {
+    console.error('导航到发布页面失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToOperation() {
-  router.push('/operation');
+async function goToOperation() {
+  try {
+    await router.push('/operation');
+  } catch (error) {
+    console.error('导航到运营中心失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
-function goToCharacter(characterId: string) {
-  router.push(`/game/${game.value?.id}/character/${characterId}`);
+async function goToCharacter(characterId: string) {
+  if (!game.value?.id) {
+    showToast('游戏数据加载中，请稍后再试');
+    return;
+  }
+  try {
+    await router.push(`/game/${game.value.id}/character/${characterId}`);
+  } catch (error) {
+    console.error('导航到角色详情失败:', error);
+    showToast('页面跳转失败');
+  }
 }
 
 // CP 热度相关函数
