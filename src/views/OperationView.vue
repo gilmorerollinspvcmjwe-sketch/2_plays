@@ -62,7 +62,7 @@
 
       <van-tab title="市场情报">
         <div class="tab-content no-padding">
-          <MarketDashboard />
+          <MarketDashboard :embedded="true" />
         </div>
       </van-tab>
 

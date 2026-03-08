@@ -1,12 +1,12 @@
 <template>
   <div class="market-dashboard">
-    <van-nav-bar title="市场情报中心" left-arrow @click-left="handleBack">
+    <van-nav-bar v-if="!embedded" title="市场情报中心" left-arrow @click-left="handleBack">
       <template #right>
         <van-icon name="refresh" size="20" @click="refreshData" />
       </template>
     </van-nav-bar>
 
-    <div class="dashboard-content">
+    <div class="dashboard-content" :class="{ embedded: embedded }">
       <!-- 市场概览卡片 -->
       <van-cell-group class="overview-section" inset>
         <div class="section-header">
@@ -604,6 +604,10 @@ import { useSimulationStore } from '@/stores/simulationStore';
 import { useTaskStore } from '@/stores/taskStore';
 import { storeToRefs } from 'pinia';
 
+const props = defineProps<{
+  embedded?: boolean;
+}>();
+
 const router = useRouter();
 
 const simulationStore = useSimulationStore();
@@ -612,19 +616,24 @@ const { isInitialized, worldImpact, currentRetention, sentimentDistribution, gac
 
 // 竞品数据 - 从 simulationStore 获取
 const competitorList = computed(() => {
-  const comps = competitors.value || [];
-  return comps.map((c: any, index: number) => ({
-    id: c.id,
-    name: c.name,
-    rating: c.games?.[0]?.rating || 7,
-    downloads: c.games?.[0]?.dau || 0,
-    revenue: c.games?.[0]?.revenue || 0,
-    tags: c.games?.[0]?.genre ? [c.games[0].genre] : [],
-    strengths: [getPersonalityStrength(c.personality)],
-    weaknesses: [getPersonalityWeakness(c.personality)],
-    threatLevel: c.decisionWeights?.revenue > 0.5 ? 4 : 3,
-    rank: index + 1,
-  }));
+  try {
+    const comps = competitors?.value || [];
+    return comps.map((c: any, index: number) => ({
+      id: c?.id || `comp_${index}`,
+      name: c?.name || '未知公司',
+      rating: c?.games?.[0]?.rating || 7,
+      downloads: c?.games?.[0]?.dau || 0,
+      revenue: c?.games?.[0]?.revenue || 0,
+      tags: c?.games?.[0]?.genre ? [c.games[0].genre] : [],
+      strengths: [getPersonalityStrength(c?.personality)],
+      weaknesses: [getPersonalityWeakness(c?.personality)],
+      threatLevel: c?.decisionWeights?.revenue > 0.5 ? 4 : 3,
+      rank: index + 1,
+    }));
+  } catch (e) {
+    console.error('生成竞品列表失败:', e);
+    return [];
+  }
 });
 
 // 个性化优势
@@ -652,6 +661,35 @@ function getPersonalityWeakness(personality: string): string {
   };
   return map[personality] || '暂无明显劣势';
 }
+
+// 竞品动态 - 从 competitors 生成
+const competitorNews = computed(() => {
+  try {
+    const comps = competitors?.value || [];
+    const news: any[] = [];
+    
+    comps.forEach((comp: any) => {
+      if (comp?.games && comp.games.length > 0) {
+        const game = comp.games[0];
+        news.push({
+          id: `news_${comp.id}_${game.day || 1}`,
+          title: `${comp.name || '未知公司'} 发布新动态`,
+          content: `${comp.name || '未知公司'} 的游戏 ${game.name || '未命名'} 当前评分 ${game.rating || 7}`,
+          day: game.day || 1,
+          companyName: comp.name || '未知公司',
+          companyAvatar: (comp.name || '?').charAt(0),
+          type: 'neutral',
+          impact: { marketSentiment: (game.rating || 7) - 7 }
+        });
+      }
+    });
+    
+    return news;
+  } catch (e) {
+    console.error('生成竞品动态失败:', e);
+    return [];
+  }
+});
 
 // 市场趋势 - 从 WorldSimulator 获取
 const marketTrends = computed(() => {
@@ -729,28 +767,34 @@ const loadFestivalConfig = async () => {
 
 // 收入预测数据
 const festivals = computed<Festival[]>(() => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const result: Festival[] = [];
+  try {
+    const now = new Date();
+    const year = now.getFullYear();
+    const result: Festival[] = [];
 
-  festivalConfig.value.forEach((festival: any) => {
-    const festivalDate = new Date(year, festival.month - 1, festival.day);
+    (festivalConfig.value || []).forEach((festival: any) => {
+      if (!festival) return;
+      const festivalDate = new Date(year, (festival.month || 1) - 1, festival.day || 1);
 
-    if (festivalDate > now) {
-      result.push({
-        id: festival.id,
-        name: festival.name,
-        startDate: festivalDate,
-        endDate: new Date(festivalDate.getTime() + festival.durationDays * 24 * 60 * 60 * 1000),
-        description: festival.description,
-        bonusMultiplier: festival.bonusMultiplier,
-        specialEvents: festival.specialEvents,
-        impact: festival.impact
-      });
-    }
-  });
+      if (festivalDate > now) {
+        result.push({
+          id: festival.id || `festival_${result.length}`,
+          name: festival.name || '未知节日',
+          startDate: festivalDate,
+          endDate: new Date(festivalDate.getTime() + (festival.durationDays || 1) * 24 * 60 * 60 * 1000),
+          description: festival.description || '',
+          bonusMultiplier: festival.bonusMultiplier || 1,
+          specialEvents: festival.specialEvents || [],
+          impact: festival.impact || {}
+        });
+      }
+    });
 
-  return result.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+    return result.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+  } catch (e) {
+    console.error('生成节日数据失败:', e);
+    return [];
+  }
 });
 
 // 收入预测数据
@@ -919,11 +963,13 @@ const marketRisk = computed(() => {
 
 // 市场环境（用于事件生成和预测）
 const marketEnvironment = computed<MarketEnvironment>(() => ({
-  trend: marketTrends.value[0],
-  competitors: competitors.value,
-  festivals: festivals.value,
-  overallHeat: marketTrends.value.reduce((sum, t) => sum + t.strength, 0) / marketTrends.value.length,
-  marketShare: marketShare.value
+  trend: marketTrends.value?.[0],
+  competitors: competitors?.value || [],
+  festivals: festivals.value || [],
+  overallHeat: marketTrends.value?.length > 0 
+    ? marketTrends.value.reduce((sum, t) => sum + (t?.strength || 0), 0) / marketTrends.value.length 
+    : 0,
+  marketShare: marketShare.value || 0
 }));
 
 // 计算属性
@@ -1149,11 +1195,14 @@ const getCountdown = (date: Date) => {
 
 onMounted(() => {
   loadFestivalConfig();
-  refreshData();
-  // 初始化市场预测
-  updateMarketPredictions();
-  // 触发每日任务进度 - 查看市场情报
-  taskStore.updateTaskProgress('daily_view_market');
+  // 延迟执行 refreshData，确保 store 数据已初始化
+  setTimeout(() => {
+    refreshData();
+    // 初始化市场预测
+    updateMarketPredictions();
+    // 触发每日任务进度 - 查看市场情报
+    taskStore.updateTaskProgress('daily_view_market');
+  }, 100);
 });
 </script>
 
@@ -1166,6 +1215,10 @@ onMounted(() => {
 
 .dashboard-content {
   padding: 12px;
+}
+
+.dashboard-content.embedded {
+  padding-top: 0;
 }
 
 .section-header {

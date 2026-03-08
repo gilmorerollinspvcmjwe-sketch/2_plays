@@ -37,15 +37,15 @@
     </div>
 
     <!-- 每日任务（可折叠） -->
-    <div class="task-section" v-if="taskStore.dailyTasks.length > 0">
+    <div class="task-section" v-if="taskStore.isInitialized && taskStore.dailyTasks.length > 0">
       <div class="task-header" @click="toggleTaskSection">
         <div class="task-info">
           <van-icon name="todo-list-o" size="20" color="#FF69B4" />
           <span class="task-title">每日任务</span>
-          <van-tag v-if="taskStore.allDailyCompleted" type="success" round size="small">已完成</van-tag>
-          <van-tag v-else color="#FF69B4" round size="small">
+          <span v-if="taskStore.allDailyCompleted" class="task-tag completed">已完成</span>
+          <span v-else class="task-tag progress">
             {{ taskStore.dailyProgress.current }}/{{ taskStore.dailyProgress.total }}
-          </van-tag>
+          </span>
         </div>
         <div class="task-meta">
           <van-icon :name="isTaskExpanded ? 'arrow-up' : 'arrow-down'" color="#999" />
@@ -53,7 +53,7 @@
       </div>
       
       <!-- 展开时显示任务列表 -->
-      <div v-if="isTaskExpanded && taskStore.dailyTasks.length > 0" class="task-list">
+      <div v-if="isTaskExpanded" class="task-list">
         <div 
           v-for="task in taskStore.dailyTasks" 
           :key="task.id" 
@@ -454,6 +454,25 @@ function formatNumber(num: number): string {
   font-size: 16px;
   font-weight: 500;
   color: #333;
+}
+
+.task-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.task-tag.completed {
+  background: #07c160;
+  color: white;
+}
+
+.task-tag.progress {
+  background: #FF69B4;
+  color: white;
 }
 
 .task-meta {

@@ -102,6 +102,7 @@ export const useTaskStore = defineStore('task', () => {
   const lastDailyRefresh = ref<string>('');
   const lastWeeklyRefresh = ref<string>('');
   const dailyReports = ref<DailyReport[]>([]);
+  const isInitialized = ref(false);
 
   const allDailyCompleted = computed(() => {
     if (dailyTasks.value.length === 0) return false;
@@ -290,6 +291,7 @@ export const useTaskStore = defineStore('task', () => {
           lastDailyRefresh.value = today;
           saveToLocal();
         }
+        isInitialized.value = true;
       } catch (e) {
         console.error('加载任务数据失败:', e);
         initTasks();
@@ -298,6 +300,7 @@ export const useTaskStore = defineStore('task', () => {
       // 没有保存的数据，初始化任务
       initTasks();
     }
+    isInitialized.value = true;
   }
 
   function resetTasks() {
@@ -318,6 +321,7 @@ export const useTaskStore = defineStore('task', () => {
     lastDailyRefresh,
     lastWeeklyRefresh,
     dailyReports,
+    isInitialized,
     allDailyCompleted,
     allWeeklyCompleted,
     dailyProgress,
