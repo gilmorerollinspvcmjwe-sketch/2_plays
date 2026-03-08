@@ -104,14 +104,19 @@ export const useTaskStore = defineStore('task', () => {
   const dailyReports = ref<DailyReport[]>([]);
 
   const allDailyCompleted = computed(() => {
+    if (dailyTasks.value.length === 0) return false;
     return dailyTasks.value.every(t => t.completed);
   });
 
   const allWeeklyCompleted = computed(() => {
+    if (weeklyTasks.value.length === 0) return false;
     return weeklyTasks.value.every(t => t.completed);
   });
 
   const dailyProgress = computed(() => {
+    if (dailyTasks.value.length === 0) {
+      return { current: 0, total: 0, percentage: 0 };
+    }
     const completed = dailyTasks.value.filter(t => t.completed).length;
     return {
       current: completed,
@@ -121,6 +126,9 @@ export const useTaskStore = defineStore('task', () => {
   });
 
   const weeklyProgress = computed(() => {
+    if (weeklyTasks.value.length === 0) {
+      return { current: 0, total: 0, percentage: 0 };
+    }
     const completed = weeklyTasks.value.filter(t => t.completed).length;
     return {
       current: completed,

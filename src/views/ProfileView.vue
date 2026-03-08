@@ -37,7 +37,7 @@
     </div>
 
     <!-- 每日任务（可折叠） -->
-    <div class="task-section">
+    <div class="task-section" v-if="taskStore.dailyTasks.length > 0">
       <div class="task-header" @click="toggleTaskSection">
         <div class="task-info">
           <van-icon name="todo-list-o" size="20" color="#FF69B4" />
@@ -53,7 +53,7 @@
       </div>
       
       <!-- 展开时显示任务列表 -->
-      <div v-if="isTaskExpanded" class="task-list">
+      <div v-if="isTaskExpanded && taskStore.dailyTasks.length > 0" class="task-list">
         <div 
           v-for="task in taskStore.dailyTasks" 
           :key="task.id" 
@@ -70,10 +70,10 @@
           </div>
           
           <div class="task-item-reward">
-            <template v-if="task.reward.gold">
+            <template v-if="task.reward?.gold">
               <span class="reward-gold">+{{ task.reward.gold }}💰</span>
             </template>
-            <template v-if="task.reward.diamond">
+            <template v-if="task.reward?.diamond">
               <span class="reward-diamond">+{{ task.reward.diamond }}💎</span>
             </template>
           </div>
@@ -235,6 +235,7 @@ const isSignInExpanded = ref(false);
 
 // 计算是否所有任务都已领取
 const allTasksClaimed = computed(() => {
+  if (!taskStore.dailyTasks || taskStore.dailyTasks.length === 0) return true;
   return taskStore.dailyTasks.every(t => t.claimed);
 });
 
