@@ -9,7 +9,6 @@
       :pending-incidents="operationStore.pendingIncidents"
       @create-pool="handleOpenCreatePool"
       @create-event="handleOpenCreateEvent"
-      @simulate-day="handleSimulateDay"
     />
 
     <!-- 玩家社区分析入口 -->
@@ -135,11 +134,6 @@ function handleOpenCreatePool() {
 function handleOpenCreateEvent() {
   activeTab.value = 1;
   eventCenterTabRef.value?.openCreateEvent();
-}
-
-function handleSimulateDay() {
-  operationStore.simulateOneDay();
-  showToast('已模拟一天运营数据');
 }
 
 function handleResolveCrisis(crisisId: string, option: CrisisOption) {

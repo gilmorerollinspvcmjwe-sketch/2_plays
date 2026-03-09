@@ -15,9 +15,7 @@ const router = createRouter({
         },
         {
           path: 'creator',
-          name: 'creator',
-          component: () => import('@/views/creator/CreatorEntryView.vue'),
-          meta: { title: '游戏开发' }
+          redirect: '/'
         },
         {
           path: 'creator/character',

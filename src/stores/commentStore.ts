@@ -18,6 +18,7 @@ import {
 } from '@/data/commentTemplates';
 import type { Player } from './playerStore';
 import { useSimulationStore } from './simulationStore';
+import { useProjectStore } from './projectStore';
 
 // 平台类型
 export type PlatformType = 'douyin' | 'xiaohongshu' | 'weibo' | 'bilibili' | 'tieba';
@@ -494,8 +495,19 @@ export const useCommentStore = defineStore('comment', () => {
   
   /**
    * 快速生成评论（用于模拟每日数据）
+   * 只有在有运营中项目时才生成评论
    */
   function generateDailyComments(count: number = 5): GameComment[] {
+    const projectStore = useProjectStore();
+    
+    // 检查是否有运营中的项目
+    const hasOperatingProjects = projectStore.operatingProjects.length > 0;
+    
+    if (!hasOperatingProjects) {
+      console.log('[CommentStore] 没有运营中的项目，不生成评论');
+      return [];
+    }
+    
     const newComments: GameComment[] = [];
     const platforms: PlatformType[] = ['douyin', 'xiaohongshu', 'weibo', 'bilibili', 'tieba'];
     
@@ -954,9 +966,21 @@ export const useCommentStore = defineStore('comment', () => {
   
   /**
    * 初始化一些默认评论
+   * 只有在有运营中项目时才生成评论
    */
   function initDefaultComments() {
+    const projectStore = useProjectStore();
+    
+    // 检查是否有运营中的项目
+    const hasOperatingProjects = projectStore.operatingProjects.length > 0;
+    
+    if (!hasOperatingProjects) {
+      console.log('[CommentStore] 没有运营中的项目，跳过评论初始化');
+      return;
+    }
+    
     if (comments.value.length === 0) {
+      console.log('[CommentStore] 初始化默认评论，运营项目数:', projectStore.operatingProjects.length);
       generateDailyComments(10);
     }
   }

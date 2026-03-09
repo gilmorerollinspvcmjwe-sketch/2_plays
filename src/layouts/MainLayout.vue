@@ -26,51 +26,70 @@
       </router-view>
     </main>
 
-    <!-- 底部 Tab 导航 -->
-    <van-tabbar v-model="activeTab" class="tabbar">
-      <van-tabbar-item @click="goToHome" icon="home-o" :class="{ 'van-tabbar-item--active': route.path === '/' }">
-        首页
-      </van-tabbar-item>
-      <van-tabbar-item @click="goToCreator" icon="edit" :class="{ 'van-tabbar-item--active': route.path.startsWith('/creator') }">
-        开发
-      </van-tabbar-item>
-      <van-tabbar-item @click="goToOperation" icon="shop-o" :class="{ 'van-tabbar-item--active': route.path === '/operation' }">
-        运营
-      </van-tabbar-item>
-      <van-tabbar-item @click="goToComments" icon="comment-o" :class="{ 'van-tabbar-item--active': route.path === '/comments' }">
-        评论
-      </van-tabbar-item>
-      <van-tabbar-item @click="goToProfile" icon="user-o" :class="{ 'van-tabbar-item--active': route.path === '/profile' }">
-        我的
-      </van-tabbar-item>
-    </van-tabbar>
+    <!-- 底部自定义导航栏 -->
+    <div class="bottom-nav">
+      <!-- 首页 -->
+      <div 
+        class="nav-item" 
+        :class="{ 'nav-item--active': route.path === '/' }" 
+        @click="goToHome"
+      >
+        <van-icon name="home-o" size="22" />
+        <span class="nav-text">首页</span>
+      </div>
+      
+      <!-- 运营 -->
+      <div 
+        class="nav-item" 
+        :class="{ 'nav-item--active': route.path === '/operation' }" 
+        @click="goToOperation"
+      >
+        <van-icon name="shop-o" size="22" />
+        <span class="nav-text">运营</span>
+      </div>
+      
+      <!-- 中间"下一天"按钮 -->
+      <NextDayButton @click="handleNextDay" />
+      
+      <!-- 评论 -->
+      <div 
+        class="nav-item" 
+        :class="{ 'nav-item--active': route.path === '/comments' }" 
+        @click="goToComments"
+      >
+        <van-icon name="comment-o" size="22" />
+        <span class="nav-text">评论</span>
+      </div>
+      
+      <!-- 我的 -->
+      <div 
+        class="nav-item" 
+        :class="{ 'nav-item--active': route.path === '/profile' }" 
+        @click="goToProfile"
+      >
+        <van-icon name="user-o" size="22" />
+        <span class="nav-text">我的</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePointsStore } from '@/stores/points';
+import { useOperationStore } from '@/stores/operationStore';
+import { showToast } from 'vant';
+import NextDayButton from '@/components/common/NextDayButton.vue';
 
 const route = useRoute();
 const router = useRouter();
 const pointsStore = usePointsStore();
-
-// 根据当前路由计算 activeTab
-const activeTab = computed(() => {
-  const path = route.path;
-  if (path === '/') return 0;
-  if (path.startsWith('/creator')) return 1;
-  if (path === '/operation') return 2;
-  if (path === '/comments') return 3;
-  if (path === '/profile') return 4;
-  return 0;
-});
+const operationStore = useOperationStore();
 
 const pageTitle = computed(() => {
   const titleMap: Record<string, string> = {
     '/': '乙游模拟器',
-    '/creator': '游戏开发',
     '/creator/character': '角色创建',
     '/creator/plot': '剧情设计',
     '/creator/plot/editor': '剧情编辑器',
@@ -92,7 +111,7 @@ const pageTitle = computed(() => {
 });
 
 const showBack = computed(() => {
-  const noBackPaths = ['/', '/creator', '/operation', '/comments', '/profile'];
+  const noBackPaths = ['/', '/operation', '/comments', '/profile'];
   return !noBackPaths.includes(route.path);
 });
 
@@ -102,10 +121,6 @@ const goBack = () => {
 
 const goToHome = () => {
   router.push('/');
-};
-
-const goToCreator = () => {
-  router.push('/creator');
 };
 
 const goToOperation = () => {
@@ -123,13 +138,23 @@ const goToProfile = () => {
 const goToPoints = () => {
   router.push('/points');
 };
+
+const handleNextDay = async () => {
+  try {
+    await operationStore.simulateOneDay();
+    showToast('已进入下一天');
+  } catch (error) {
+    console.error('模拟一天失败:', error);
+    showToast('操作失败，请重试');
+  }
+};
 </script>
 
 <style scoped lang="scss">
 .main-layout {
   min-height: 100vh;
   background: linear-gradient(180deg, #FFF5F7 0%, #FFE4E8 100%);
-  padding-bottom: 50px;
+  padding-bottom: 80px;
 }
 
 .nav-bar {
@@ -156,14 +181,49 @@ const goToPoints = () => {
 }
 
 .main-content {
-  min-height: calc(100vh - 96px);
+  min-height: calc(100vh - 146px);
   padding-bottom: 20px;
 }
 
-.tabbar {
-  :deep(.van-tabbar-item--active) {
-    color: #FF69B4;
+// 底部自定义导航栏
+.bottom-nav {
+  display: flex;
+  justify-content: space-around;
+  align-items: flex-end;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: white;
+  border-top: 1px solid #f0f0f0;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+}
+
+.nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #999;
+  font-size: 12px;
+  padding: 4px 12px;
+  min-width: 60px;
+  cursor: pointer;
+  transition: color 0.2s;
+  
+  &:active {
+    opacity: 0.7;
   }
+}
+
+.nav-item--active {
+  color: #FF69B4;
+}
+
+.nav-text {
+  font-size: 11px;
 }
 
 // 页面切换动画

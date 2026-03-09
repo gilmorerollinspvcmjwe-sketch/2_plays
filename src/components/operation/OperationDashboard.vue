@@ -80,17 +80,6 @@
         创建活动
       </van-button>
       
-      <van-button 
-        type="warning" 
-        size="small" 
-        round
-        @click="$emit('simulate-day')"
-      >
-        <template #icon>
-          <van-icon name="clock-o" />
-        </template>
-        模拟一天
-      </van-button>
     </div>
 
     <!-- 待处理事件提示 -->
@@ -121,7 +110,6 @@ defineProps<Props>();
 defineEmits<{
   'create-pool': [];
   'create-event': [];
-  'simulate-day': [];
 }>();
 
 function formatNumber(num: number): string {

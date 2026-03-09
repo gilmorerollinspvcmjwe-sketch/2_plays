@@ -12,27 +12,96 @@
       @recruit="goToRecruit"
     />
 
-    <!-- 待处理事项 -->
-    <div v-if="pendingTasks.length > 0" class="section">
+    <!-- 游戏开发快速入口 -->
+    <div class="section" v-if="currentProject">
       <div class="section-header">
-        <span class="section-title">待处理事项</span>
-        <van-tag type="danger">{{ pendingTasks.length }}</van-tag>
+        <span class="section-title">游戏开发</span>
+        <van-tag type="primary" v-if="currentProject">{{ currentProject.name }}</van-tag>
       </div>
-      <div class="pending-list">
-        <div
-          v-for="task in pendingTasks"
-          :key="task.id"
-          class="pending-item"
-          @click="handlePendingTask(task)"
-        >
-          <van-icon :name="task.icon" class="pending-icon" />
-          <div class="pending-content">
-            <div class="pending-title">{{ task.title }}</div>
-            <div class="pending-desc">{{ task.description }}</div>
+
+      <div class="quick-dev-card">
+        <div class="dev-options-flex">
+          <!-- 创建角色 -->
+          <div class="dev-option" @click="goToCharacterCreator">
+            <div class="option-icon" style="background: #e6f7ff;">
+              <van-icon name="user-o" color="#1890ff" size="20" />
+            </div>
+            <div class="option-name">创建角色</div>
+            <div class="option-count" v-if="currentProject">
+              {{ currentProject.characters.length }} 个
+            </div>
           </div>
-          <van-icon name="arrow" class="pending-arrow" />
+
+          <!-- 设计剧情 -->
+          <div class="dev-option" @click="goToPlotDesigner">
+            <div class="option-icon" style="background: #f6ffed;">
+              <van-icon name="description" color="#52c41a" size="20" />
+            </div>
+            <div class="option-name">设计剧情</div>
+            <div class="option-count" v-if="currentProject">
+              {{ currentProject.plots.length }} 条
+            </div>
+          </div>
+
+          <!-- 剧情分析 -->
+          <div class="dev-option" @click="goToPlotAnalysis">
+            <div class="option-icon" style="background: #fff7e6;">
+              <van-icon name="chart-bar-o" color="#faad14" size="20" />
+            </div>
+            <div class="option-name">剧情分析</div>
+          </div>
+
+          <!-- 角色排行 -->
+          <div class="dev-option" @click="goToCharacterRanking">
+            <div class="option-icon" style="background: #f9f0ff;">
+              <van-icon name="trophy-o" color="#722ed1" size="20" />
+            </div>
+            <div class="option-name">角色排行</div>
+          </div>
+        </div>
+
+        <!-- 开发进度 -->
+        <div class="dev-progress" v-if="currentProject && (currentProject.status === 'planning' || currentProject.status === 'developing')">
+          <div class="progress-label">进度: {{ currentProject.progress }}%</div>
+          <van-progress :percentage="currentProject.progress" :stroke-width="6" color="#FF69B4" />
+          <div class="progress-hint" v-if="currentProject.status === 'planning' && !canStartDev">
+            需要至少2个角色、1条剧情、2人团队才能开始开发
+          </div>
+          <div class="progress-hint ready" v-else-if="currentProject.status === 'planning' && canStartDev">
+            前置条件已满足，可以开始开发
+          </div>
         </div>
       </div>
+    </div>
+
+    <!-- 待处理事项 -->
+    <div v-if="pendingTasks.length > 0" class="section">
+      <!-- 折叠提示条 -->
+      <div class="pending-collapse-bar" @click="isPendingTasksExpanded = !isPendingTasksExpanded">
+        <div class="pending-collapse-left">
+          <span class="section-title">待处理事项</span>
+          <van-tag type="danger">{{ pendingTasks.length }}</van-tag>
+        </div>
+        <van-icon :name="isPendingTasksExpanded ? 'arrow-up' : 'arrow-down'" class="pending-collapse-icon" />
+      </div>
+      <!-- 展开的列表 -->
+      <transition name="expand">
+        <div v-show="isPendingTasksExpanded" class="pending-list">
+          <div
+            v-for="task in pendingTasks"
+            :key="task.id"
+            class="pending-item"
+            @click="handlePendingTask(task)"
+          >
+            <van-icon :name="task.icon" class="pending-icon" />
+            <div class="pending-content">
+              <div class="pending-title">{{ task.title }}</div>
+              <div class="pending-desc">{{ task.description }}</div>
+            </div>
+            <van-icon name="arrow" class="pending-arrow" />
+          </div>
+        </div>
+      </transition>
     </div>
 
     <!-- 项目列表 -->
@@ -45,24 +114,36 @@
       <!-- 进行中项目 -->
       <div v-if="activeProjects.length > 0" class="project-section">
         <div class="project-section-title">进行中</div>
-        <ProjectCard
-          v-for="project in activeProjects"
-          :key="project.id"
-          :project="project"
-          :pending-count="getProjectPendingCount(project.id)"
-          @click="goToProject"
-        />
+        <div class="project-scroll-container">
+          <div
+            v-for="project in activeProjects"
+            :key="project.id"
+            class="project-card-wrapper"
+          >
+            <ProjectCard
+              :project="project"
+              :pending-count="getProjectPendingCount(project.id)"
+              @click="goToProject"
+            />
+          </div>
+        </div>
       </div>
 
       <!-- 运营中项目 -->
       <div v-if="operatingProjects.length > 0" class="project-section">
         <div class="project-section-title">运营中</div>
-        <ProjectCard
-          v-for="project in operatingProjects"
-          :key="project.id"
-          :project="project"
-          @click="goToProject"
-        />
+        <div class="project-scroll-container">
+          <div
+            v-for="project in operatingProjects"
+            :key="project.id"
+            class="project-card-wrapper"
+          >
+            <ProjectCard
+              :project="project"
+              @click="goToProject"
+            />
+          </div>
+        </div>
       </div>
 
       <!-- 空状态 -->
@@ -79,9 +160,8 @@
     <div class="section">
       <div class="section-header">
         <span class="section-title">市场动态</span>
-        <van-icon name="fire-o" color="#ff4d4f" />
       </div>
-      <div class="market-news">
+      <div class="market-scroll-container">
         <div v-for="(news, index) in marketNews" :key="index" class="news-item">
           <van-tag :type="news.type" size="small" class="news-tag">
             {{ news.tag }}
@@ -170,6 +250,9 @@ const taskStore = useTaskStore();
 const companyName = ref('我的游戏公司');
 const companyLevel = ref(1);
 
+// 待处理事项折叠状态
+const isPendingTasksExpanded = ref(false);
+
 // 创建项目弹窗
 const showCreateProject = ref(false);
 const showPositioningPicker = ref(false);
@@ -203,6 +286,19 @@ const activeProjects = computed(() => [
 ]);
 
 const operatingProjects = computed(() => projectStore.operatingProjects);
+
+// 当前项目
+const currentProject = computed(() => projectStore.currentProject);
+
+// 是否可以开始开发
+const canStartDev = computed(() => {
+  if (!currentProject.value) return false;
+  const hasChars = currentProject.value.characters.length >= 2;
+  const hasPlots = currentProject.value.plots.length >= 1;
+  const teamSize = currentProject.value.team.planning + currentProject.value.team.art +
+                   currentProject.value.team.program + currentProject.value.team.operation;
+  return hasChars && hasPlots && teamSize >= 2;
+});
 
 // 待处理事项
 interface PendingTask {
@@ -439,6 +535,57 @@ async function goToRecruit() {
   }
 }
 
+// 游戏开发快速入口跳转方法
+async function goToCharacterCreator() {
+  if (!currentProject.value) {
+    showToast('请先选择一个项目');
+    return;
+  }
+  projectStore.setCurrentProject(currentProject.value.id);
+  try {
+    await router.push('/creator/character');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
+async function goToPlotDesigner() {
+  if (!currentProject.value) {
+    showToast('请先选择一个项目');
+    return;
+  }
+  projectStore.setCurrentProject(currentProject.value.id);
+  try {
+    await router.push('/creator/plot');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
+async function goToPlotAnalysis() {
+  if (!currentProject.value) {
+    showToast('请先选择一个项目');
+    return;
+  }
+  try {
+    await router.push(`/plot-analysis/${currentProject.value.id}`);
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
+async function goToCharacterRanking() {
+  try {
+    await router.push('/character-ranking');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
 // 初始化
 onMounted(() => {
   // 初始化默认项目和员工
@@ -471,7 +618,8 @@ function handleDailySummaryClose() {
 }
 
 .section {
-  margin-bottom: 16px;
+  margin: 8px 0;
+  padding: 0 12px;
 }
 
 .section-header {
@@ -483,8 +631,8 @@ function handleDailySummaryClose() {
 }
 
 .section-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: bold;
   color: #333;
 }
 
@@ -499,16 +647,141 @@ function handleDailySummaryClose() {
   padding-left: 4px;
 }
 
+/* 横向滚动容器 */
+.project-scroll-container {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 4px 4px 12px 4px;
+  scrollbar-width: thin;
+  scrollbar-color: #ccc transparent;
+}
+
+.project-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.project-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.project-scroll-container::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.project-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
+
+.project-card-wrapper {
+  flex: 0 0 auto;
+  width: calc(50% - 6px);
+  min-width: 160px;
+}
+
+.project-card-wrapper :deep(.project-card) {
+  margin-bottom: 0;
+}
+
+.project-card-wrapper :deep(.project-header) {
+  margin-bottom: 8px;
+}
+
+.project-card-wrapper :deep(.project-cover) {
+  width: 36px;
+  height: 36px;
+}
+
+.project-card-wrapper :deep(.cover-icon) {
+  font-size: 18px;
+}
+
+.project-card-wrapper :deep(.project-name) {
+  font-size: 14px;
+}
+
+.project-card-wrapper :deep(.project-tags) {
+  flex-wrap: wrap;
+}
+
+.project-card-wrapper :deep(.health-section),
+.project-card-wrapper :deep(.expectation-section),
+.project-card-wrapper :deep(.suggestion-tip),
+.project-card-wrapper :deep(.project-metrics),
+.project-card-wrapper :deep(.project-footer) {
+  display: none;
+}
+
+.project-card-wrapper :deep(.project-progress) {
+  margin-bottom: 0;
+}
+
+.project-card-wrapper :deep(.progress-header) {
+  margin-bottom: 4px;
+}
+
+.project-card-wrapper :deep(.progress-label),
+.project-card-wrapper :deep(.progress-value) {
+  font-size: 11px;
+}
+
+.pending-collapse-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: white;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: background 0.3s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pending-collapse-bar:active {
+  background: #f5f5f5;
+}
+
+.pending-collapse-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pending-collapse-icon {
+  color: #999;
+  font-size: 16px;
+  transition: transform 0.3s;
+}
+
 .pending-list {
   background: white;
   border-radius: 12px;
   overflow: hidden;
+  margin-top: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* 展开/收起过渡动画 */
+.expand-enter-active,
+.expand-leave-active {
+  transition: all 0.3s ease;
+  max-height: 500px;
+  opacity: 1;
+  overflow: hidden;
+}
+
+.expand-enter-from,
+.expand-leave-to {
+  max-height: 0;
+  opacity: 0;
 }
 
 .pending-item {
   display: flex;
   align-items: center;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid #f0f0f0;
   cursor: pointer;
   transition: background 0.3s;
@@ -547,22 +820,47 @@ function handleDailySummaryClose() {
   color: #ccc;
 }
 
-.market-news {
+.market-scroll-container {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 12px;
   background: white;
   border-radius: 12px;
-  padding: 12px;
+  height: 60px;
+  align-items: center;
+  scrollbar-width: thin;
+  scrollbar-color: #ccc transparent;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.market-scroll-container::-webkit-scrollbar {
+  height: 6px;
+}
+
+.market-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.market-scroll-container::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 3px;
+}
+
+.market-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: #999;
 }
 
 .news-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 0;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.news-item:last-child {
-  border-bottom: none;
+  padding: 8px 12px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  flex-shrink: 0;
+  width: auto;
 }
 
 .news-tag {
@@ -572,6 +870,7 @@ function handleDailySummaryClose() {
 .news-text {
   font-size: 13px;
   color: #666;
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -580,5 +879,82 @@ function handleDailySummaryClose() {
 
 .create-project-form {
   padding: 16px;
+}
+
+/* 游戏开发快速入口样式 */
+.quick-dev-card {
+  background: white;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dev-options-flex {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dev-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fafafa;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  flex: 1;
+  min-width: 0;
+}
+
+.dev-option:active {
+  transform: scale(0.98);
+  background: #f0f0f0;
+}
+
+.dev-option .option-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+
+.dev-option .option-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 2px;
+}
+
+.dev-option .option-count {
+  font-size: 11px;
+  color: #999;
+}
+
+.dev-progress {
+  padding-top: 10px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.dev-progress .progress-label {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.dev-progress .progress-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #999;
+}
+
+.dev-progress .progress-hint.ready {
+  color: #52c41a;
 }
 </style>
