@@ -23,9 +23,28 @@
           </div>
         </div>
 
+        <!-- 快速操作区 -->
+        <div class="quick-actions">
+          <div class="action-title">快速操作</div>
+          <div class="action-grid">
+            <div class="action-card primary" @click="handleCreateProject">
+              <div class="action-icon">
+                <van-icon name="plus" color="#fff" />
+              </div>
+              <div class="action-name">创建项目</div>
+            </div>
+            <div class="action-card" @click="goToTeamManagement">
+              <div class="action-icon" style="background: #e6f7ff;">
+                <van-icon name="friends-o" color="#1890ff" />
+              </div>
+              <div class="action-name">团队管理</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 开发选项 -->
         <div class="dev-options">
-          <div class="option-title">选择开发内容</div>
+          <div class="option-title">内容开发</div>
 
           <div class="option-grid">
             <!-- 创建角色 -->
@@ -57,30 +76,6 @@
               </div>
               <van-icon name="arrow" class="option-arrow" />
             </div>
-
-            <!-- 剧情分析 -->
-            <div class="option-card" @click="goToPlotAnalysis">
-              <div class="option-icon" style="background: #fff7e6;">
-                <van-icon name="chart-bar-o" color="#faad14" />
-              </div>
-              <div class="option-info">
-                <div class="option-name">剧情分析</div>
-                <div class="option-desc">查看完成率、流失点分析</div>
-              </div>
-              <van-icon name="arrow" class="option-arrow" />
-            </div>
-
-            <!-- 角色排行 -->
-            <div class="option-card" @click="goToCharacterRanking">
-              <div class="option-icon" style="background: #f9f0ff;">
-                <van-icon name="trophy-o" color="#722ed1" />
-              </div>
-              <div class="option-info">
-                <div class="option-name">角色排行</div>
-                <div class="option-desc">查看角色价值排名</div>
-              </div>
-              <van-icon name="arrow" class="option-arrow" />
-            </div>
           </div>
         </div>
 
@@ -105,15 +100,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import { showDialog, showToast } from 'vant';
 import BackButton from '@/components/common/BackButton.vue';
 import { useProjectStore } from '@/stores/projectStore';
+import { useCompanyStore } from '@/stores/companyStore';
 
 const router = useRouter();
 const projectStore = useProjectStore();
+const companyStore = useCompanyStore();
 
 const currentProject = computed(() => projectStore.currentProject);
+const showCreateProject = ref(false);
 
 // 是否可以开始开发
 const canStartDev = computed(() => {
@@ -154,6 +153,36 @@ async function goToHome() {
   }
 }
 
+async function handleCreateProject() {
+  // 检查资金
+  if (!companyStore.canSpend(100000)) {
+    showToast('资金不足，需要10万元立项费用');
+    return;
+  }
+  
+  // 弹出确认对话框
+  try {
+    await showDialog({
+      title: '创建新项目',
+      message: '创建新项目需要10万元立项费用，是否继续？',
+      showCancelButton: true,
+    });
+    // 用户确认，跳转到项目创建页面
+    showCreateProject.value = true;
+  } catch {
+    // 用户取消，不做任何操作
+  }
+}
+
+async function goToTeamManagement() {
+  try {
+    await router.push('/team');
+  } catch (error) {
+    console.error('导航失败:', error);
+    showToast('页面跳转失败');
+  }
+}
+
 async function goToCharacterCreator() {
   if (!currentProject.value) return;
   projectStore.setCurrentProject(currentProject.value.id);
@@ -170,25 +199,6 @@ async function goToPlotDesigner() {
   projectStore.setCurrentProject(currentProject.value.id);
   try {
     await router.push('/creator/plot');
-  } catch (error) {
-    console.error('导航失败:', error);
-    showToast('页面跳转失败');
-  }
-}
-
-async function goToPlotAnalysis() {
-  if (!currentProject.value) return;
-  try {
-    await router.push(`/plot-analysis/${currentProject.value.id}`);
-  } catch (error) {
-    console.error('导航失败:', error);
-    showToast('页面跳转失败');
-  }
-}
-
-async function goToCharacterRanking() {
-  try {
-    await router.push('/character-ranking');
   } catch (error) {
     console.error('导航失败:', error);
     showToast('页面跳转失败');
@@ -226,6 +236,65 @@ async function goToCharacterRanking() {
   color: #333;
 }
 
+/* 快速操作区 */
+.quick-actions {
+  margin-bottom: 16px;
+}
+
+.action-title {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.action-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.action-card:active {
+  transform: scale(0.98);
+}
+
+.action-card.primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.action-card.primary .action-icon {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.action-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+
+.action-name {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* 开发选项 */
 .dev-options {
   margin-bottom: 16px;
 }
@@ -254,8 +323,8 @@ async function goToCharacterRanking() {
   transition: all 0.3s;
 }
 
-.option-card:hover {
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+.option-card:active {
+  transform: scale(0.98);
 }
 
 .option-icon {
@@ -296,6 +365,7 @@ async function goToCharacterRanking() {
   font-size: 16px;
 }
 
+/* 项目进度 */
 .project-progress {
   background: white;
   border-radius: 12px;

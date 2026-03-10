@@ -15,6 +15,13 @@ export interface TeamMember {
   skills: string[];
 }
 
+export interface FundsHistoryRecord {
+  date: string;
+  amount: number;
+  reason: string;
+  type: 'income' | 'expense';
+}
+
 export interface Company {
   name: string;
   logo: {
@@ -24,18 +31,28 @@ export interface Company {
   foundedAt: string;
   team: TeamMember[];
   reputation: number;
+  funds: number;
+  fundsHistory: FundsHistoryRecord[];
 }
 
 export const useCompanyStore = defineStore('company', () => {
   // State
   const company = ref<Company | null>(null);
   const isFirstVisit = ref(true);
-  
+  const funds = ref<number>(500000);
+  const fundsHistory = ref<FundsHistoryRecord[]>([]);
+
   // Getters
   const hasCompany = computed(() => company.value !== null);
-  
+
   const teamSize = computed(() => {
     return company.value?.team.length || 0;
+  });
+
+  const fundsStatus = computed(() => {
+    if (funds.value > 300000) return 'sufficient';
+    if (funds.value >= 100000) return 'tight';
+    return 'depleted';
   });
   
   // Actions
@@ -44,6 +61,9 @@ export const useCompanyStore = defineStore('company', () => {
    * 创建公司
    */
   function createCompany(name: string, logoEmoji: string, logoText: string): Company {
+    funds.value = 500000;
+    fundsHistory.value = [];
+
     const newCompany: Company = {
       name,
       logo: {
@@ -52,13 +72,15 @@ export const useCompanyStore = defineStore('company', () => {
       },
       foundedAt: new Date().toISOString(),
       team: generateDefaultTeam(),
-      reputation: 50
+      reputation: 50,
+      funds: funds.value,
+      fundsHistory: fundsHistory.value
     };
-    
+
     company.value = newCompany;
     isFirstVisit.value = false;
     saveToLocal();
-    
+
     return newCompany;
   }
   
@@ -179,14 +201,66 @@ export const useCompanyStore = defineStore('company', () => {
   }
   
   /**
+   * 添加资金
+   */
+  function addFunds(amount: number, reason: string): void {
+    funds.value += amount;
+    const record: FundsHistoryRecord = {
+      date: new Date().toISOString(),
+      amount,
+      reason,
+      type: 'income'
+    };
+    fundsHistory.value.push(record);
+
+    if (company.value) {
+      company.value.funds = funds.value;
+      company.value.fundsHistory = fundsHistory.value;
+    }
+    saveToLocal();
+  }
+
+  /**
+   * 花费资金
+   */
+  function spendFunds(amount: number, reason: string): boolean {
+    if (funds.value < amount) return false;
+
+    funds.value -= amount;
+    const record: FundsHistoryRecord = {
+      date: new Date().toISOString(),
+      amount,
+      reason,
+      type: 'expense'
+    };
+    fundsHistory.value.push(record);
+
+    if (company.value) {
+      company.value.funds = funds.value;
+      company.value.fundsHistory = fundsHistory.value;
+    }
+    saveToLocal();
+    return true;
+  }
+
+  /**
+   * 检查资金是否足够
+   */
+  function canSpend(amount: number): boolean {
+    return funds.value >= amount;
+  }
+
+  /**
    * 保存到本地存储
    */
   function saveToLocal(): void {
     if (company.value) {
       localStorage.setItem('company_data', JSON.stringify(company.value));
     }
+    localStorage.setItem('company_funds', JSON.stringify(funds.value));
+    localStorage.setItem('company_funds_history', JSON.stringify(fundsHistory.value));
   }
-  
+
   /**
    * 从本地存储加载
    */
@@ -199,6 +273,25 @@ export const useCompanyStore = defineStore('company', () => {
         console.error('加载公司数据失败:', e);
       }
     }
+
+    const savedFunds = localStorage.getItem('company_funds');
+    if (savedFunds) {
+      try {
+        funds.value = JSON.parse(savedFunds);
+      } catch (e) {
+        console.error('加载资金数据失败:', e);
+      }
+    }
+
+    const savedFundsHistory = localStorage.getItem('company_funds_history');
+    if (savedFundsHistory) {
+      try {
+        fundsHistory.value = JSON.parse(savedFundsHistory);
+      } catch (e) {
+        console.error('加载资金历史失败:', e);
+      }
+    }
+
     checkOnboardingStatus();
   }
   
@@ -209,11 +302,14 @@ export const useCompanyStore = defineStore('company', () => {
     // State
     company,
     isFirstVisit,
-    
+    funds,
+    fundsHistory,
+
     // Getters
     hasCompany,
     teamSize,
-    
+    fundsStatus,
+
     // Actions
     createCompany,
     addTeamMember,
@@ -221,6 +317,9 @@ export const useCompanyStore = defineStore('company', () => {
     increaseReputation,
     completeOnboarding,
     checkOnboardingStatus,
+    addFunds,
+    spendFunds,
+    canSpend,
     saveToLocal,
     loadFromLocal
   };

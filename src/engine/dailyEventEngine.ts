@@ -12,12 +12,13 @@ export type DailyEventType =
   | 'negative_publicity'
   | 'player_request'
   | 'collaboration_invite'
+  | 'investment'
   | ExtendedEventType;
 
 export interface DailyEvent {
   id: string;
   type: DailyEventType;
-  category: 'employee' | 'positive' | 'negative' | 'neutral';
+  category: 'employee' | 'positive' | 'negative' | 'neutral' | 'special';
   title: string;
   description: string;
   impact: {
@@ -27,6 +28,7 @@ export interface DailyEvent {
     playerChange?: number;
     fatigueChange?: number;
     experienceBonus?: number;
+    investmentAmount?: number;
   };
   duration?: number;
   affectedProjectId?: string;
@@ -287,6 +289,42 @@ export class NegativeEventGenerator {
   }
 }
 
+export class SpecialEventGenerator {
+  private readonly INVESTMENT_PROBABILITY = 0.05;
+
+  generateInvestmentEvent(): DailyEvent | null {
+    if (!checkProbability(this.INVESTMENT_PROBABILITY)) {
+      return null;
+    }
+
+    const investmentAmount = Math.floor(Math.random() * 900000) + 100000;
+
+    return {
+      id: generateId(),
+      type: 'investment',
+      category: 'special',
+      title: '投资事件',
+      description: `一家投资公司看好你的公司，决定投资${(investmentAmount / 10000).toFixed(0)}万元！`,
+      impact: {
+        investmentAmount: investmentAmount,
+        reputationChange: 10,
+      },
+      triggeredAt: new Date().toISOString(),
+    };
+  }
+
+  generate(): DailyEvent[] {
+    const events: DailyEvent[] = [];
+
+    const investmentEvent = this.generateInvestmentEvent();
+    if (investmentEvent) {
+      events.push(investmentEvent);
+    }
+
+    return events;
+  }
+}
+
 export class NeutralEventGenerator {
   private readonly PLAYER_REQUEST_PROBABILITY = 0.03;
   private readonly COLLABORATION_PROBABILITY = 0.01;
@@ -357,6 +395,7 @@ export class DailyEventEngine {
   private positiveGenerator: PositiveEventGenerator;
   private negativeGenerator: NegativeEventGenerator;
   private neutralGenerator: NeutralEventGenerator;
+  private specialGenerator: SpecialEventGenerator;
   private extendedGenerator: ExtendedEventGenerator;
 
   constructor() {
@@ -364,6 +403,7 @@ export class DailyEventEngine {
     this.positiveGenerator = new PositiveEventGenerator();
     this.negativeGenerator = new NegativeEventGenerator();
     this.neutralGenerator = new NeutralEventGenerator();
+    this.specialGenerator = new SpecialEventGenerator();
     this.extendedGenerator = new ExtendedEventGenerator();
   }
 
@@ -389,6 +429,10 @@ export class DailyEventEngine {
 
     const neutralEvents = this.neutralGenerator.generate(params.characterNames);
     events.push(...neutralEvents);
+
+    // 添加特殊事件（投资事件等）
+    const specialEvents = this.specialGenerator.generate();
+    events.push(...specialEvents);
 
     // 添加扩展事件（Phase 5.5 新增）
     const extendedEvents = this.extendedGenerator.generate({

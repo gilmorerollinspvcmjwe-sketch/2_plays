@@ -1,133 +1,54 @@
 <template>
   <div class="company-dashboard">
-    <div class="dashboard-header">
+    <div class="company-header">
       <div class="company-name">{{ companyName }}</div>
       <div class="company-level">Lv.{{ companyLevel }}</div>
     </div>
-
-    <div class="dashboard-content">
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-icon" style="background: #e6f7ff;">
-            <van-icon name="gold-coin-o" color="#1890ff" />
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ formatMoney(stats.totalRevenue) }}</div>
-            <div class="stat-label">总收入</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon" style="background: #f6ffed;">
-            <van-icon name="chart-trending-o" color="#52c41a" />
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ stats.activeProjects }}/{{ stats.totalProjects }}</div>
-            <div class="stat-label">活跃项目</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon" style="background: #fff7e6;">
-            <van-icon name="friends-o" color="#fa8c16" />
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ totalEmployees }}</div>
-            <div class="stat-label">团队人数</div>
-          </div>
-        </div>
-
-        <div class="stat-card">
-          <div class="stat-icon" style="background: #f9f0ff;">
-            <van-icon name="smile-o" color="#722ed1" />
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ Math.round(averageSatisfaction) }}%</div>
-            <div class="stat-label">团队满意度</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="quick-actions">
-        <div class="action-item" @click="handleCreateProject">
-          <van-icon name="plus" color="#1890ff" />
-          <span class="action-label">创建项目</span>
-        </div>
-        <div class="action-item" @click="handleTeamManagement">
-          <van-icon name="manager-o" color="#52c41a" />
-          <span class="action-label">团队管理</span>
-        </div>
-        <div class="action-item" @click="handleViewReports">
-          <van-icon name="chart-bar-o" color="#fa8c16" />
-          <span class="action-label">查看报表</span>
-        </div>
-        <div class="action-item" @click="handleRecruit">
-          <van-icon name="search" color="#722ed1" />
-          <span class="action-label">招聘员工</span>
-        </div>
-      </div>
+    <div class="fund-display" :class="fundsStatusClass">
+      <van-icon name="gold-coin-o" class="fund-icon" />
+      <span class="fund-amount">{{ formatMoney(companyFunds) }}</span>
+      <span class="fund-status">{{ fundsStatusText }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-interface Stats {
-  totalRevenue: number;
-  activeProjects: number;
-  totalProjects: number;
-}
+import { computed } from 'vue';
 
 interface Props {
   companyName: string;
   companyLevel: number;
-  stats: Stats;
-  totalEmployees: number;
-  averageSatisfaction: number;
+  companyFunds: number;
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   companyName: '我的游戏公司',
   companyLevel: 1,
-  stats: () => ({
-    totalRevenue: 0,
-    activeProjects: 0,
-    totalProjects: 0
-  }),
-  totalEmployees: 0,
-  averageSatisfaction: 70
+  companyFunds: 500000
 });
 
-const emit = defineEmits<{
-  createProject: [];
-  teamManagement: [];
-  viewReports: [];
-  recruit: [];
-}>();
+// 资金状态计算
+const fundsStatusClass = computed(() => {
+  if (props.companyFunds > 300000) return 'sufficient';
+  if (props.companyFunds >= 100000) return 'tight';
+  return 'depleted';
+});
+
+// 资金状态文本
+const fundsStatusText = computed(() => {
+  if (props.companyFunds > 300000) return '资金充足';
+  if (props.companyFunds >= 100000) return '资金紧张';
+  return '资金不足';
+});
 
 function formatMoney(amount: number): string {
-  if (amount >= 1000000) {
-    return (amount / 1000000).toFixed(1) + 'M';
+  if (amount >= 100000000) {
+    return (amount / 100000000).toFixed(2) + '亿';
   }
-  if (amount >= 1000) {
-    return (amount / 1000).toFixed(1) + 'K';
+  if (amount >= 10000) {
+    return (amount / 10000).toFixed(2) + '万';
   }
-  return amount.toString();
-}
-
-function handleCreateProject() {
-  emit('createProject');
-}
-
-function handleTeamManagement() {
-  emit('teamManagement');
-}
-
-function handleViewReports() {
-  emit('viewReports');
-}
-
-function handleRecruit() {
-  emit('recruit');
+  return amount.toLocaleString();
 }
 </script>
 
@@ -135,18 +56,18 @@ function handleRecruit() {
 .company-dashboard {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border-radius: 12px;
-  padding: 12px 16px;
+  padding: 16px;
+  margin: 12px 16px;
   color: white;
-  margin-bottom: 12px;
-  max-height: 120px;
-  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.dashboard-header {
+.company-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 10px;
 }
 
 .company-name {
@@ -155,94 +76,50 @@ function handleRecruit() {
 }
 
 .company-level {
+  font-size: 11px;
   background: rgba(255, 255, 255, 0.2);
   padding: 2px 8px;
   border-radius: 10px;
-  font-size: 12px;
 }
 
-.dashboard-content {
+.fund-display {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.stats-row {
-  display: flex;
-  flex: 1;
-  gap: 8px;
-}
-
-.stat-card {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.stat-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.stat-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #333;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.stat-label {
-  font-size: 10px;
-  color: #666;
-}
-
-.quick-actions {
-  display: flex;
   gap: 6px;
   background: rgba(255, 255, 255, 0.95);
-  border-radius: 8px;
-  padding: 6px;
+  border-radius: 20px;
+  padding: 6px 14px;
 }
 
-.action-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.3s;
-  white-space: nowrap;
+.fund-icon {
+  font-size: 16px;
+  color: #FFD700;
 }
 
-.action-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.action-item :deep(.van-icon) {
-  font-size: 14px;
-}
-
-.action-label {
-  font-size: 11px;
+.fund-amount {
+  font-size: 16px;
+  font-weight: 700;
   color: #333;
+}
+
+.fund-status {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.fund-display.sufficient .fund-status {
+  color: #52c41a;
+  background: #f6ffed;
+}
+
+.fund-display.tight .fund-status {
+  color: #faad14;
+  background: #fffbe6;
+}
+
+.fund-display.depleted .fund-status {
+  color: #ff4d4f;
+  background: #fff2f0;
 }
 </style>

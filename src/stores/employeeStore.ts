@@ -29,6 +29,7 @@ import {
   type TeamSynergy
 } from '@/types/employee';
 import { triggerEvents, type DailyEvent } from '@/engine/dailyEventEngine';
+import { useCompanyStore } from './companyStore';
 
 export const useEmployeeStore = defineStore('employee', () => {
   // State
@@ -70,6 +71,10 @@ export const useEmployeeStore = defineStore('employee', () => {
     return employees.value.reduce((sum, emp) => sum + emp.salary, 0);
   });
 
+  const dailySalary = computed(() => {
+    return Math.floor(totalSalary.value / 365);
+  });
+
   const averageFatigue = computed(() => {
     if (employees.value.length === 0) return 0;
     return employees.value.reduce((sum, emp) => sum + emp.fatigue, 0) / employees.value.length;
@@ -84,8 +89,35 @@ export const useEmployeeStore = defineStore('employee', () => {
 
   /**
    * 创建员工（直接雇佣）
+   * 薪资范围（年薪）：
+   * - 初级(level 1-2): 8-12万/年 → 日薪 220-330元
+   * - 中级(level 3-4): 15-25万/年 → 日薪 410-685元
+   * - 高级(level 5): 30-50万/年 → 日薪 820-1370元
    */
   function createEmployee(params: CreateEmployeeParams): Employee {
+    // 如果没有提供薪资，根据等级生成默认薪资
+    let salary = params.salary;
+    if (!salary || salary <= 0) {
+      const levelMap: Record<EmployeeLevel, number> = {
+        junior: 1,
+        mid: 3,
+        senior: 5,
+        expert: 5
+      };
+      const levelNum = levelMap[params.level] || 1;
+      
+      if (levelNum <= 2) {
+        // 初级: 8-12万/年
+        salary = Math.floor(Math.random() * (120000 - 80000 + 1)) + 80000;
+      } else if (levelNum <= 4) {
+        // 中级: 15-25万/年
+        salary = Math.floor(Math.random() * (250000 - 150000 + 1)) + 150000;
+      } else {
+        // 高级: 30-50万/年
+        salary = Math.floor(Math.random() * (500000 - 300000 + 1)) + 300000;
+      }
+    }
+
     const employee: Employee = {
       id: `emp_${Date.now()}`,
       name: params.name,
@@ -94,7 +126,7 @@ export const useEmployeeStore = defineStore('employee', () => {
       skills: { ...params.skills },
       fatigue: 0,
       satisfaction: 70,
-      salary: params.salary,
+      salary: salary,
       specialty: params.specialty,
       trait: params.trait,
       experience: 0,
@@ -106,6 +138,15 @@ export const useEmployeeStore = defineStore('employee', () => {
     employees.value.push(employee);
     saveToLocal();
     return employee;
+  }
+
+  /**
+   * 获取指定员工的日工资
+   */
+  function getEmployeeDailySalary(employeeId: string): number {
+    const employee = employees.value.find(e => e.id === employeeId);
+    if (!employee) return 0;
+    return Math.floor(employee.salary / 365);
   }
 
   /**
@@ -155,6 +196,21 @@ export const useEmployeeStore = defineStore('employee', () => {
     const applicant = posting.applicants.find(a => a.id === applicantId);
     if (!applicant) {
       return { success: false, message: '应聘者不存在' };
+    }
+
+    // 获取 companyStore 检查资金
+    const companyStore = useCompanyStore();
+    const monthlySalary = Math.floor(applicant.expectedSalary / 12);
+
+    // 检查资金是否足够支付一个月工资
+    if (!companyStore.canSpend(monthlySalary)) {
+      return { success: false, message: '资金不足以支付新员工一个月工资' };
+    }
+
+    // 扣除一个月工资
+    const spendSuccess = companyStore.spendFunds(monthlySalary, '新员工预付工资');
+    if (!spendSuccess) {
+      return { success: false, message: '资金扣除失败，请稍后重试' };
     }
 
     // 创建员工
@@ -815,6 +871,7 @@ export const useEmployeeStore = defineStore('employee', () => {
 
   /**
    * 初始化默认员工
+   * 使用合理的年薪范围
    */
   function initDefaultEmployees(): void {
     if (employees.value.length === 0) {
@@ -827,7 +884,7 @@ export const useEmployeeStore = defineStore('employee', () => {
           skills: { planning: 65, art: 40, program: 30, operation: 45 },
           specialty: 'plot_writing',
           trait: 'creative',
-          salary: 6000
+          salary: 180000 // 中级：约18万/年，日薪约493元
         },
         {
           name: '王芳',
@@ -836,7 +893,7 @@ export const useEmployeeStore = defineStore('employee', () => {
           skills: { planning: 35, art: 70, program: 25, operation: 30 },
           specialty: 'character_design',
           trait: 'creative',
-          salary: 6500
+          salary: 200000 // 中级：约20万/年，日薪约548元
         },
         {
           name: '张伟',
@@ -845,7 +902,7 @@ export const useEmployeeStore = defineStore('employee', () => {
           skills: { planning: 25, art: 20, program: 55, operation: 30 },
           specialty: 'frontend',
           trait: 'efficient',
-          salary: 5500
+          salary: 100000 // 初级：约10万/年，日薪约274元
         }
       ];
 
@@ -916,6 +973,7 @@ export const useEmployeeStore = defineStore('employee', () => {
     assignedEmployees,
     highRiskEmployees,
     totalSalary,
+    dailySalary,
     averageFatigue,
     averageSatisfaction,
 
@@ -951,6 +1009,8 @@ export const useEmployeeStore = defineStore('employee', () => {
     changeCareerPath,
     getCareerPathName,
     getEmployeeGrowthTips,
-    getAllEmployeeGrowthTips
+    getAllEmployeeGrowthTips,
+    // 日工资计算
+    getEmployeeDailySalary
   };
 });

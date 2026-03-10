@@ -17,9 +17,12 @@ export interface Task {
 }
 
 export interface DailyReport {
+  day: number;
   date: string;
   revenue: number;
   expense: number;
+  fundsChange?: number;
+  currentFunds?: number;
   newPlayers: number;
   lostPlayers: number;
   completedTasks: number;

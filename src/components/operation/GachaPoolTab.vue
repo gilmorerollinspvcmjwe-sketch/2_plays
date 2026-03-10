@@ -1,56 +1,5 @@
 <template>
   <div class="tab-content">
-    <!-- 角色人气排行 -->
-    <div class="popularity-ranking-card">
-      <div class="ranking-header">
-        <span class="ranking-title">🔥 角色人气排行 (Top10)</span>
-        <van-button
-          type="primary"
-          size="mini"
-          round
-          color="linear-gradient(to right, #FF69B4, #FFB6C1)"
-          @click="refreshPopularityRanking"
-        >
-          刷新
-        </van-button>
-      </div>
-      <div class="ranking-list">
-        <div
-          v-for="(char, index) in popularityRanking"
-          :key="char.characterId"
-          class="ranking-item"
-          :class="{ 'is-up': char.isInPool, 'is-recommended': !char.isInPool && char.popularity >= 60 }"
-          @click="handleCharacterClick(char)"
-        >
-          <span class="rank-number" :class="`rank-${index + 1}`">{{ index + 1 }}</span>
-          <span class="char-name">{{ char.name }}</span>
-          <div class="popularity-bar">
-            <div
-              class="popularity-fill"
-              :style="{ width: char.popularity + '%', background: getPopularityColor(char.popularity) }"
-            />
-          </div>
-          <span class="popularity-value">{{ char.popularity }}</span>
-          <van-tag
-            v-if="char.isInPool"
-            type="success"
-            size="mini"
-            class="status-tag"
-          >
-            UP中
-          </van-tag>
-          <van-tag
-            v-else-if="char.popularity >= 60"
-            type="warning"
-            size="mini"
-            class="status-tag"
-          >
-            建议UP
-          </van-tag>
-        </div>
-      </div>
-    </div>
-
     <!-- 建议UP角色 -->
     <div v-if="recommendedUpCharacters.length > 0" class="recommended-section">
       <div class="section-header">

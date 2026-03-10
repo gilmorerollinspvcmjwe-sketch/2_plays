@@ -27,6 +27,7 @@ import {
 } from '@/types/project';
 import type { Character, Plot } from '@/stores/gameStore';
 import { useGameStore } from './gameStore';
+import { useCompanyStore } from './companyStore';
 import { calculateProjectQuality, type ProjectQualityScore } from '@/engine/qualityScoring';
 
 export const useProjectStore = defineStore('project', () => {
@@ -83,7 +84,20 @@ export const useProjectStore = defineStore('project', () => {
   /**
    * 创建新项目
    */
-  function createProject(params: CreateProjectParams): Project {
+  async function createProject(params: CreateProjectParams): Promise<{ success: boolean; message: string; project?: Project }> {
+    const companyStore = useCompanyStore();
+
+    // 检查是否有10万立项费用
+    if (!companyStore.canSpend(100000)) {
+      return { success: false, message: '资金不足，需要10万元立项费用' };
+    }
+
+    // 扣除立项费用
+    const spendSuccess = companyStore.spendFunds(100000, '项目立项费用');
+    if (!spendSuccess) {
+      return { success: false, message: '资金不足，需要10万元立项费用' };
+    }
+
     const project: Project = {
       id: `proj_${Date.now()}`,
       name: params.name,
@@ -113,7 +127,7 @@ export const useProjectStore = defineStore('project', () => {
     currentProjectId.value = project.id;
     saveToLocal();
 
-    return project;
+    return { success: true, message: '项目创建成功', project };
   }
 
   /**
@@ -528,9 +542,9 @@ export const useProjectStore = defineStore('project', () => {
   /**
    * 初始化默认项目
    */
-  function initDefaultProject(): void {
+  async function initDefaultProject(): Promise<void> {
     if (projects.value.length === 0) {
-      createProject({
+      await createProject({
         name: '我的第一款乙女游戏',
         positioning: 'mass',
         genre: ['romance', 'modern'],

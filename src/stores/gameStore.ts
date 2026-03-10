@@ -1338,9 +1338,56 @@ export const useGameStore = defineStore('game', () => {
           pointsStore.unlockAchievement('milestone_master');
         }
       });
+
+      // 自动发放成就奖励资金
+      import('./companyStore').then(({ useCompanyStore }) => {
+        const companyStore = useCompanyStore();
+        newlyCompleted.forEach(milestone => {
+          const rewardAmount = calculateMilestoneReward(milestone);
+          companyStore.addFunds(rewardAmount, `成就奖励：${milestone.name}`);
+        });
+      });
     }
     
     return newlyCompleted;
+  }
+
+  /**
+   * 计算里程碑奖励金额（1万-10万）
+   */
+  function calculateMilestoneReward(milestone: Milestone): number {
+    const baseReward = 10000;
+    const maxReward = 100000;
+    
+    // 根据里程碑类型和目标值计算奖励
+    const typeMultipliers: Record<string, number> = {
+      revenue: 1.5,
+      players: 1.2,
+      popularity: 1.0,
+      reputation: 1.3,
+      plots: 0.8
+    };
+    
+    const multiplier = typeMultipliers[milestone.type] || 1.0;
+    
+    // 根据目标值计算奖励比例
+    let progressRatio = 0.1;
+    if (milestone.target >= 10000000) {
+      progressRatio = 1.0;
+    } else if (milestone.target >= 1000000) {
+      progressRatio = 0.8;
+    } else if (milestone.target >= 100000) {
+      progressRatio = 0.6;
+    } else if (milestone.target >= 10000) {
+      progressRatio = 0.4;
+    } else if (milestone.target >= 1000) {
+      progressRatio = 0.3;
+    } else if (milestone.target >= 100) {
+      progressRatio = 0.2;
+    }
+    
+    const reward = Math.floor(baseReward + (maxReward - baseReward) * progressRatio * multiplier);
+    return Math.min(maxReward, Math.max(baseReward, reward));
   }
   
   /**

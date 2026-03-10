@@ -4,12 +4,7 @@
     <CompanyDashboard
       :company-name="companyName"
       :company-level="companyLevel"
-      :stats="companyStats"
-      :total-employees="employeeStore.totalEmployees"
-      :average-satisfaction="employeeStore.averageSatisfaction"
-      @create-project="showCreateProject = true"
-      @team-management="goToTeamManagement"
-      @recruit="goToRecruit"
+      :company-funds="companyFunds"
     />
 
     <!-- 游戏开发快速入口 -->
@@ -18,9 +13,27 @@
         <span class="section-title">游戏开发</span>
         <van-tag type="primary" v-if="currentProject">{{ currentProject.name }}</van-tag>
       </div>
-
+      
       <div class="quick-dev-card">
         <div class="dev-options-flex">
+          <!-- 创建项目 -->
+          <div class="dev-option" @click="handleQuickCreateProject">
+            <div class="option-icon" style="background: #fff2e8;">
+              <van-icon name="plus" color="#fa8c16" size="20" />
+            </div>
+            <div class="option-name">创建项目</div>
+            <div class="option-count">新建项目</div>
+          </div>
+          
+          <!-- 团队管理 -->
+          <div class="dev-option" @click="goToTeamManagement">
+            <div class="option-icon" style="background: #f9f0ff;">
+              <van-icon name="friends-o" color="#722ed1" size="20" />
+            </div>
+            <div class="option-name">团队管理</div>
+            <div class="option-count">{{ employeeStore.totalEmployees }} 人</div>
+          </div>
+          
           <!-- 创建角色 -->
           <div class="dev-option" @click="goToCharacterCreator">
             <div class="option-icon" style="background: #e6f7ff;">
@@ -31,7 +44,7 @@
               {{ currentProject.characters.length }} 个
             </div>
           </div>
-
+          
           <!-- 设计剧情 -->
           <div class="dev-option" @click="goToPlotDesigner">
             <div class="option-icon" style="background: #f6ffed;">
@@ -42,24 +55,8 @@
               {{ currentProject.plots.length }} 条
             </div>
           </div>
-
-          <!-- 剧情分析 -->
-          <div class="dev-option" @click="goToPlotAnalysis">
-            <div class="option-icon" style="background: #fff7e6;">
-              <van-icon name="chart-bar-o" color="#faad14" size="20" />
-            </div>
-            <div class="option-name">剧情分析</div>
-          </div>
-
-          <!-- 角色排行 -->
-          <div class="dev-option" @click="goToCharacterRanking">
-            <div class="option-icon" style="background: #f9f0ff;">
-              <van-icon name="trophy-o" color="#722ed1" size="20" />
-            </div>
-            <div class="option-name">角色排行</div>
-          </div>
         </div>
-
+        
         <!-- 开发进度 -->
         <div class="dev-progress" v-if="currentProject && (currentProject.status === 'planning' || currentProject.status === 'developing')">
           <div class="progress-label">进度: {{ currentProject.progress }}%</div>
@@ -72,36 +69,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- 待处理事项 -->
-    <div v-if="pendingTasks.length > 0" class="section">
-      <!-- 折叠提示条 -->
-      <div class="pending-collapse-bar" @click="isPendingTasksExpanded = !isPendingTasksExpanded">
-        <div class="pending-collapse-left">
-          <span class="section-title">待处理事项</span>
-          <van-tag type="danger">{{ pendingTasks.length }}</van-tag>
-        </div>
-        <van-icon :name="isPendingTasksExpanded ? 'arrow-up' : 'arrow-down'" class="pending-collapse-icon" />
-      </div>
-      <!-- 展开的列表 -->
-      <transition name="expand">
-        <div v-show="isPendingTasksExpanded" class="pending-list">
-          <div
-            v-for="task in pendingTasks"
-            :key="task.id"
-            class="pending-item"
-            @click="handlePendingTask(task)"
-          >
-            <van-icon :name="task.icon" class="pending-icon" />
-            <div class="pending-content">
-              <div class="pending-title">{{ task.title }}</div>
-              <div class="pending-desc">{{ task.description }}</div>
-            </div>
-            <van-icon name="arrow" class="pending-arrow" />
-          </div>
-        </div>
-      </transition>
     </div>
 
     <!-- 项目列表 -->
@@ -154,6 +121,36 @@
           </van-button>
         </van-empty>
       </div>
+    </div>
+
+    <!-- 待处理事项 -->
+    <div v-if="pendingTasks.length > 0" class="section">
+      <!-- 折叠提示条 -->
+      <div class="pending-collapse-bar" @click="isPendingTasksExpanded = !isPendingTasksExpanded">
+        <div class="pending-collapse-left">
+          <span class="section-title">待处理事项</span>
+          <van-tag type="danger">{{ pendingTasks.length }}</van-tag>
+        </div>
+        <van-icon :name="isPendingTasksExpanded ? 'arrow-up' : 'arrow-down'" class="pending-collapse-icon" />
+      </div>
+      <!-- 展开的列表 -->
+      <transition name="expand">
+        <div v-show="isPendingTasksExpanded" class="pending-list">
+          <div
+            v-for="task in pendingTasks"
+            :key="task.id"
+            class="pending-item"
+            @click="handlePendingTask(task)"
+          >
+            <van-icon :name="task.icon" class="pending-icon" />
+            <div class="pending-content">
+              <div class="pending-title">{{ task.title }}</div>
+              <div class="pending-desc">{{ task.description }}</div>
+            </div>
+            <van-icon name="arrow" class="pending-arrow" />
+          </div>
+        </div>
+      </transition>
     </div>
 
     <!-- 市场动态 -->
@@ -231,6 +228,7 @@ import { useEmployeeStore } from '@/stores/employeeStore';
 import { useSimulationStore } from '@/stores/simulationStore';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useTaskStore } from '@/stores/taskStore';
+import { useCompanyStore } from '@/stores/companyStore';
 import CompanyDashboard from '@/components/project/CompanyDashboard.vue';
 import ProjectCard from '@/components/project/ProjectCard.vue';
 import DailySummary from '@/components/report/DailySummary.vue';
@@ -245,10 +243,12 @@ const employeeStore = useEmployeeStore();
 const simulationStore = useSimulationStore();
 const onboardingStore = useOnboardingStore();
 const taskStore = useTaskStore();
+const companyStore = useCompanyStore();
 
 // 公司信息
 const companyName = ref('我的游戏公司');
 const companyLevel = ref(1);
+const companyFunds = computed(() => companyStore.funds);
 
 // 待处理事项折叠状态
 const isPendingTasksExpanded = ref(false);
@@ -274,12 +274,6 @@ const positioningColumns = [
 ];
 
 // 计算属性
-const companyStats = computed(() => ({
-  totalRevenue: projectStore.companyStats.totalRevenue,
-  activeProjects: projectStore.companyStats.activeProjects,
-  totalProjects: projectStore.companyStats.totalProjects
-}));
-
 const activeProjects = computed(() => [
   ...projectStore.planningProjects,
   ...projectStore.developingProjects
@@ -444,7 +438,7 @@ async function handleCreateProject() {
     return;
   }
 
-  const project = projectStore.createProject({
+  const result = await projectStore.createProject({
     name: newProject.value.name,
     positioning: newProject.value.positioning,
     genre: ['romance'],
@@ -462,7 +456,12 @@ async function handleCreateProject() {
     }
   });
 
-  showToast('项目创建成功');
+  if (!result.success) {
+    showToast(result.message);
+    return;
+  }
+
+  showToast(result.message);
   showCreateProject.value = false;
 
   // 重置表单
@@ -474,7 +473,7 @@ async function handleCreateProject() {
 
   // 跳转到项目详情
   try {
-    await router.push(`/project/${project.id}`);
+    await router.push(`/project/${result.project!.id}`);
   } catch (error) {
     console.error('导航失败:', error);
     showToast('页面跳转失败');
@@ -526,13 +525,14 @@ async function goToTeamManagement() {
   }
 }
 
-async function goToRecruit() {
-  try {
-    await router.push('/recruit');
-  } catch (error) {
-    console.error('导航失败:', error);
-    showToast('页面跳转失败');
+async function handleQuickCreateProject() {
+  // 检查资金
+  if (!companyStore.canSpend(100000)) {
+    showToast('资金不足，需要10万元立项费用');
+    return;
   }
+  
+  showCreateProject.value = true;
 }
 
 // 游戏开发快速入口跳转方法

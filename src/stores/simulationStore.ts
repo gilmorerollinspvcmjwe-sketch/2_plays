@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
+import { showToast } from 'vant';
 import {
   VirtualPlayerPool,
   SimulationEngine,
@@ -27,6 +28,7 @@ import { useProjectStore } from './projectStore';
 import { useGameStore } from './gameStore';
 import { useOperationStore } from './operationStore';
 import { useTaskStore } from './taskStore';
+import { useCompanyStore } from './companyStore';
 import type {
   ProjectOperationData,
   SimulationConfig,
@@ -1159,6 +1161,83 @@ export const useSimulationStore = defineStore('simulation', () => {
         });
       }
 
+      // 6. 资金结算
+      console.log('[Simulation] 执行资金结算...');
+      const companyStore = useCompanyStore();
+      // employeeStore 已在函数开始处声明
+
+      // a. 计算所有运营项目的 dailyRevenue 总和
+      const totalRevenue = projectResults.reduce((sum, r) => sum + r.operationData.dailyRevenue, 0);
+
+      // b. 添加项目运营收入
+      if (totalRevenue > 0) {
+        companyStore.addFunds(totalRevenue, '项目运营收入');
+        console.log(`[Simulation] 项目运营收入: +${totalRevenue}`);
+      }
+
+      // c. 获取员工日工资
+      const totalSalary = employeeStore.dailySalary;
+
+      // d. 支付员工工资
+      const salaryPaid = companyStore.spendFunds(totalSalary, '员工工资');
+      console.log(`[Simulation] 员工工资支出: -${totalSalary}`);
+
+      // e. 计算运营成本：5000 + 运营项目数 × 2000
+      const operatingProjectCount = operatingProjects.length;
+      const operatingCost = 5000 + operatingProjectCount * 2000;
+
+      // f. 支付运营成本
+      const costPaid = companyStore.spendFunds(operatingCost, '运营成本');
+      console.log(`[Simulation] 运营成本支出: -${operatingCost}`);
+
+      // 4. 资金不足处理
+      let fundsShortageEvent = false;
+      if (!salaryPaid || !costPaid) {
+        fundsShortageEvent = true;
+        console.warn('[Simulation] 资金不足！触发资金紧张事件');
+
+        // 触发"资金紧张"事件 - 添加到近期事件
+        recentEvents.value.push({
+          id: `event_funds_shortage_${Date.now()}`,
+          type: '负面',
+          title: '资金紧张',
+          description: '公司资金不足，无法支付全部费用，员工满意度下降',
+          tags: ['负面', '危机', '炎上'],
+          solutions: [
+            {
+              id: 'solution_emergency_loan',
+              description: '申请紧急贷款',
+              cost: 0,
+              effects: {
+                shortTerm: { satisfaction: 0, dau: 0, revenue: 0 },
+                mediumTerm: { reputation: -5 },
+                longTerm: { brandValue: 0 }
+              }
+            }
+          ],
+          triggered: true,
+          triggeredAt: currentDay.value
+        });
+
+        // 员工满意度下降5%
+        employeeStore.employees.forEach(emp => {
+          emp.satisfaction = Math.max(0, emp.satisfaction - 5);
+        });
+      }
+
+      // 计算资金变动
+      const totalExpense = totalSalary + operatingCost;
+      const fundsChange = totalRevenue - totalExpense;
+      const currentFunds = companyStore.funds;
+
+      // 显示资金结算 Toast 提示
+      const toastMessage = `今日收入: ${totalRevenue.toLocaleString()}元，支出: ${totalExpense.toLocaleString()}元，余额: ${currentFunds.toLocaleString()}元`;
+      showToast({
+        message: toastMessage,
+        position: 'bottom',
+        duration: 3000
+      });
+
       // 6. 触发每日随机事件（Phase 5）
       console.log('[Simulation] 触发每日随机事件...');
       try {
@@ -1227,27 +1306,33 @@ export const useSimulationStore = defineStore('simulation', () => {
       console.log('[Simulation] 记录每日总结报告...');
       try {
         const taskStore = useTaskStore();
-        const totalRevenue = projectResults.reduce((sum, r) => sum + r.operationData.dailyRevenue, 0);
-        const totalExpense = 0; // TODO: 计算实际支出
-        
+        const reportTotalRevenue = projectResults.reduce((sum, r) => sum + r.operationData.dailyRevenue, 0);
+        const reportTotalExpense = totalSalary + operatingCost;
+        const reportFundsChange = fundsChange;
+        const reportCurrentFunds = currentFunds;
+
         taskStore.addDailyReport({
           day: currentDay.value,
           date: new Date().toISOString(),
-          revenue: totalRevenue,
-          expense: totalExpense,
+          revenue: reportTotalRevenue,
+          expense: reportTotalExpense,
+          fundsChange: reportFundsChange,
+          currentFunds: reportCurrentFunds,
           newPlayers: projectResults.reduce((sum, r) => sum + r.operationData.newPlayers, 0),
           lostPlayers: projectResults.reduce((sum, r) => sum + r.operationData.lostPlayers, 0),
           completedTasks: taskStore.dailyProgress.current,
           achievements: [] // TODO: 记录当日达成的成就
         });
-        
+
         // 触发每日结算回调
         if (dailyReportCallback.value) {
           dailyReportCallback.value({
             day: currentDay.value,
             date: new Date().toISOString(),
-            revenue: totalRevenue,
-            expense: totalExpense,
+            revenue: reportTotalRevenue,
+            expense: reportTotalExpense,
+            fundsChange: reportFundsChange,
+            currentFunds: reportCurrentFunds,
             newPlayers: projectResults.reduce((sum, r) => sum + r.operationData.newPlayers, 0),
             lostPlayers: projectResults.reduce((sum, r) => sum + r.operationData.lostPlayers, 0),
             completedTasks: taskStore.dailyProgress.current,
